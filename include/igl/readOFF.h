@@ -29,7 +29,7 @@ namespace igl
   //     to Scalar)
   //   Index  type for indices (will be read as int and cast to Index)
   // Inputs:
-  //  str  path to .obj file
+  //  str  path to .off file
   // Outputs:
   //   V  double matrix of vertex positions  #V by 3
   //   F  #F list of face indices into vertex positions
