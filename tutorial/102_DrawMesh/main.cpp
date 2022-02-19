@@ -6,7 +6,6 @@
 #include <igl/opengl/glfw/Viewer.h>
 #include <igl/per_face_normals.h>
 #include "tutorial_shared_path.h"
-#include <string>
 
 Eigen::MatrixXd V;
 Eigen::MatrixXi F;
@@ -15,7 +14,7 @@ typedef struct HalfEdge {
   int vertex; // Index of the vertex from which the half-edge starts
   int face; // Index of the face
   int next; // Index of the next half-edge
-} HalfEdge;
+};
 
 bool operator==(const HalfEdge& he1, const HalfEdge& he2)
 {
@@ -28,11 +27,11 @@ bool operator!=(const HalfEdge& he1, const HalfEdge& he2)
 }
 
 typedef Eigen::RowVector2i Edge;
-/*bool operator==(const Edge e1, const Edge e2)
+bool operator==(const Edge e1, const Edge e2)
 {
   return (e1[0] == e2[0] && e1[1] == e2[1]) || 
     (e1[1] == e2[0] && e1[0] == e2[1]);
-}*/
+}
 
 struct compareTwoEdges {
   bool operator()(const Edge e1, const Edge e2) const {
@@ -65,7 +64,7 @@ double distance_two_points(Eigen::RowVector3d point1, Eigen::RowVector3d point2)
 
 void remove_vertex(std::vector<Eigen::RowVector3d>& vertices, int rowIndex)
 {
-  vertices[rowIndex] << -1, -1, -1;
+  vertices[rowIndex] << DBL_MIN, DBL_MIN, DBL_MIN;
 }
 
 void remove_face(std::vector<Eigen::RowVector4i>& faces, int rowIndex)
@@ -73,12 +72,12 @@ void remove_face(std::vector<Eigen::RowVector4i>& faces, int rowIndex)
   faces[rowIndex] << -1, -1, -1, -1;
 }
 
-void remove_half_edge(std::vector<HalfEdge>& halfEdges, int index)
+/*void remove_half_edge(std::vector<HalfEdge>& halfEdges, int index)
 {
   halfEdges[index].vertex = -1;
   halfEdges[index].face = -1;
   halfEdges[index].next = -1;
-}
+}*/
 
 std::vector<Edge> find_edges(Eigen::RowVector4i face)
 {
@@ -104,93 +103,116 @@ bool diag_collapse(std::vector<Eigen::RowVector3d>& vertices,
   std::vector<Eigen::RowVector4i> faces, std::vector<HalfEdge>& halfEdges, 
   std::map<Edge, std::pair<int, int>, compareTwoEdges>& halfEdgesMap)
 {
-  Eigen::RowVector4i face = faces[3];
+  Eigen::RowVector4i face = faces[13];
   std::vector<Edge> edges = find_edges(face);
   double diag1 = distance_two_points(vertices[face[0]], vertices[face[2]]);
   double diag2 = distance_two_points(vertices[face[3]], vertices[face[1]]);
 
-  if (diag1 < diag2)
-  {
+  int firstVertex = diag1 < diag2 ? face[0] : face[3];
+  int secondVertex = diag1 < diag2 ? face[2] : face[1];
 
+  std::vector<int> halfEdgesToModify;
+
+  Edge edge = find_edge(face, secondVertex);
+
+  int initialHe = halfEdges[halfEdgesMap[edge].first].vertex == secondVertex ?
+    halfEdgesMap[edge].first : halfEdgesMap[edge].second;
+  int finalHe = halfEdges[halfEdges[halfEdges[initialHe].next].next].next;
+
+  for (int tmp = opposite_half_edge(initialHe); tmp != finalHe; )
+  {
+    tmp = halfEdges[tmp].next;
+    halfEdgesToModify.push_back(tmp);
+    tmp = opposite_half_edge(tmp);
+  }
+
+  // Set new starting vertices for the half-edge to modify
+  for (int he : halfEdgesToModify)
+  {
+    if (halfEdges[he].vertex != secondVertex) return false;
+    halfEdges[he].vertex = firstVertex;
+
+    Eigen::RowVector4i f = faces[halfEdges[he].face];
+    for (int i = 0; i < 4; i++)
+    {
+      if (f[i] == secondVertex)
+      {
+        faces[halfEdges[he].face][i] = firstVertex;
+      }
+    }
+  }
+
+  // Set new opposite half-edges for the half-edge to modify
+  int firstEdge = std::find(edges.begin(), edges.end(), edge) - edges.begin();
+  if (halfEdgesMap[edges[(firstEdge + 1) % 4]].first != halfEdges[initialHe].next)
+  {
+    halfEdgesMap[edges[(firstEdge + 1) % 4]].second = opposite_half_edge(initialHe);
   }
   else
   {
-    std::vector<int> halfEdgesToModify;
+    halfEdgesMap[edges[(firstEdge + 1) % 4]].first = opposite_half_edge(initialHe);
+  }
 
-    Edge edge = find_edge(face, face[1]);
+  if (halfEdgesMap[edges[(firstEdge + 2) % 4]].first !=
+    halfEdges[halfEdges[initialHe].next].next)
+  {
+    halfEdgesMap[edges[(firstEdge + 2) % 4]].second = opposite_half_edge(finalHe);
+  }
+  else
+  {
+    halfEdgesMap[edges[(firstEdge + 2) % 4]].first = opposite_half_edge(finalHe);
+  }
 
-    int initialHe = halfEdges[halfEdgesMap[edge].first].vertex == face[1] ?
-      halfEdgesMap[edge].first : halfEdgesMap[edge].second;
-    int finalHe = halfEdges[halfEdges[halfEdges[initialHe].next].next].next;
+  std::vector<int> halfEdgesToRemove{ 
+    finalHe,
+    halfEdges[halfEdges[initialHe].next].next, 
+    halfEdges[initialHe].next, 
+    initialHe 
+  };
 
-    for (int tmp = opposite_half_edge(initialHe); tmp != finalHe; )
+  for (int i : halfEdgesToRemove)
+  {
+    for (auto& kv : halfEdgesMap)
     {
-      tmp = halfEdges[tmp].next;
-      halfEdgesToModify.push_back(tmp);
-      tmp = opposite_half_edge(tmp);
-    }
-
-    // Set new starting vertices for the half-edge to modify
-    for (int he : halfEdgesToModify)
-    {
-      if (halfEdges[he].vertex != face[1]) return false;
-      halfEdges[he].vertex = face[3];
-
-      Eigen::RowVector4i f = faces[halfEdges[he].face];
-      for (int i = 0; i < 4; i++)
+      if (kv.second.first >= i)
       {
-        if (f[i] == face[1])
-        {
-          faces[halfEdges[he].face][i] = face[3];
-        }
+        kv.second.first = kv.second.first - 1;
+      }
+      if (kv.second.second >= i)
+      {
+        kv.second.second = kv.second.second - 1;
       }
     }
-
-    // Set new opposite half-edges for the half-edge to modify
-    int firstEdge = std::find(edges.begin(), edges.end(), edge) - edges.begin();
-    if (halfEdgesMap[edges[(firstEdge + 1) % 4]].first != halfEdges[initialHe].next)
-    {
-      halfEdgesMap[edges[(firstEdge + 1) % 4]].second = opposite_half_edge(initialHe);
-    }
-    else
-    {
-      halfEdgesMap[edges[(firstEdge + 1) % 4]].first = opposite_half_edge(initialHe);
-    }
-
-    if (halfEdgesMap[edges[(firstEdge + 2) % 4]].first !=
-      halfEdges[halfEdges[initialHe].next].next)
-    {
-      halfEdgesMap[edges[(firstEdge + 2) % 4]].second = opposite_half_edge(finalHe);
-    }
-    else
-    {
-      halfEdgesMap[edges[(firstEdge + 2) % 4]].first = opposite_half_edge(finalHe);
-    }
-
-    // Remove the half-edges which belong to the face deleted
-    remove_half_edge(halfEdges, finalHe);
-    remove_half_edge(halfEdges, halfEdges[halfEdges[initialHe].next].next);
-    remove_half_edge(halfEdges, halfEdges[initialHe].next);
-    remove_half_edge(halfEdges, initialHe);
-
-    halfEdgesMap.erase(edge);
-    halfEdgesMap.erase(edges[(firstEdge + 3) % 4]);
-
-    // Remove one quad face
-    remove_face(faces, 3);
-
-    // Move one vertex and remove the other
-    Eigen::RowVector3d newPos = 0.5 * vertices[face[3]] + 0.5 * vertices[face[1]];
-    vertices[face[3]] = newPos;
-    remove_vertex(vertices, face[1]);
   }
+
+  halfEdgesMap.erase(edge);
+  halfEdgesMap.erase(edges[(firstEdge + 3) % 4]);
+
+  std::sort(halfEdgesToRemove.begin(), halfEdgesToRemove.end());
+  for (int i = halfEdgesToRemove.size() - 1; i >= 0; i--)
+  {
+    halfEdges.erase(halfEdges.begin() + i);
+  }
+
+  /*remove_half_edge(halfEdges, finalHe);
+  remove_half_edge(halfEdges, halfEdges[halfEdges[initialHe].next].next);
+  remove_half_edge(halfEdges, halfEdges[initialHe].next);
+  remove_half_edge(halfEdges, initialHe);*/
+
+  // Remove one quad face
+  remove_face(faces, std::find(faces.begin(), faces.end(), face) - faces.begin());
+
+  // Move one vertex and remove the other
+  Eigen::RowVector3d newPos = 0.5 * vertices[firstVertex] + 0.5 * vertices[secondVertex];
+  vertices[firstVertex] = newPos;
+  remove_vertex(vertices, secondVertex);
 
   // Set the new vertices of the simplified mesh
   Eigen::MatrixXd newVertices;
   for (int i = 0; i < vertices.size(); i++)
   {
     Eigen::RowVector3d vertex = vertices[i];
-    if (vertex[0] != -1)
+    if (vertex[0] != DBL_MIN)
     {
       newVertices.conservativeResize(newVertices.rows() + 1, 3);
       newVertices.row(newVertices.rows() - 1) = vertex;
@@ -228,7 +250,6 @@ bool diag_collapse(std::vector<Eigen::RowVector3d>& vertices,
 
   return true;
 }
-
 
 bool start_simplification(int finalNumberOfFaces)
 {
@@ -277,7 +298,14 @@ bool start_simplification(int finalNumberOfFaces)
       halfEdges[kv.second.second].vertex << " -- " << halfEdges[kv.second.second].face << " -- " << halfEdges[kv.second.second].next << "\n";
   }*/
 
-  return diag_collapse(vertices, faces, halfEdges, halfEdgesMap);
+  for (int i = 0; i < 2; i++)
+  {
+    if (!diag_collapse(vertices, faces, halfEdges, halfEdgesMap))
+    {
+      return false;
+    }
+  }
+  return true;
 }
 
 void per_quad_face_normals(const Eigen::MatrixXd & V, const Eigen::MatrixXi & F, Eigen::MatrixXd & N)
@@ -311,9 +339,20 @@ void draw_quad_mesh()
   Eigen::MatrixXi f;
 
   // 1) Triangulate the polygonal mesh
+  std::vector<Edge> diagonals;
+  for (int i = 0; i < F.rows(); i++)
+  {
+    for (Edge diag : diagonals)
+    {
+      if (diag == Edge{ F.row(i)[0], F.row(i)[2] })
+      {
+        F.row(i) = Eigen::Vector4i{ F.row(i)[1], F.row(i)[2], F.row(i)[3], F.row(i)[0] };
+      }
+    }
+    diagonals.push_back(Edge{F.row(i)[0], F.row(i)[2]});
+  }
   Eigen::VectorXi I, C, J;
   igl::polygon_corners(F, I, C);
-  //std::cout << "\n\n" << I << "\n\n";
   igl::polygons_to_triangles(I, C, f, J);
   //std::cout << "\n\n" << J << "\n\n";
 
@@ -328,14 +367,13 @@ void draw_quad_mesh()
     fN.row(i * 2) = N.row(i);
     fN.row(i * 2 + 1) = N.row(i);
   };
-  //std::cout << "\n\n" << fN << "\n\n";
+  //std::cout << "\n\n" << f << "\n\n";
 
   // 3) Render the triangles, and assign to each one the normal 
   // of the corresponding polygon, and use per-face rendering
   igl::opengl::glfw::Viewer viewer;
   viewer.data().set_mesh(V, f);
   viewer.data().set_normals(fN);
-
 
   // 4) Add as a line overlay the set of all edges of the original polygonal mesh
   Eigen::MatrixXi E;
@@ -357,8 +395,8 @@ int main(int argc, char *argv[])
   const std::string MESHES_DIR = "F:\\Users\\Nicolas\\Desktop\\TESI\\Quadrilateral extension to libigl\\libigl\\tutorial\\102_DrawMesh\\";
 
   // Load a mesh in OFF format
-  //igl::readOFF(MESHES_DIR + "quad_cube.off", V, F);
-  igl::readOBJ(MESHES_DIR + "quad_cubespikes.obj", V, F);
+  igl::readOFF(MESHES_DIR + "quad_surface.off", V, F);
+  //igl::readOBJ(MESHES_DIR + "quad_cubespikes.obj", V, F);
 
   if (start_simplification(9))
   {
