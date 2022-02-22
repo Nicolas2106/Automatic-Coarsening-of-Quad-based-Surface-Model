@@ -32,10 +32,11 @@ bool operator==(const Edge e1, const Edge e2)
 
 struct compareTwoEdges {
   bool operator()(const Edge e1, const Edge e2) const {
-    return std::stoi(std::to_string(std::min(e1[0], e1[1])) + 
-      std::to_string(std::max(e1[0], e1[1]))) <
-      std::stoi(std::to_string(std::min(e2[0], e2[1])) + 
-      std::to_string(std::max(e2[0], e2[1])));
+    std::string str1 = std::to_string(std::min(e1[0], e1[1])) +
+      std::to_string(std::max(e1[0], e1[1]));
+    std::string str2 = std::to_string(std::min(e2[0], e2[1])) +
+      std::to_string(std::max(e2[0], e2[1]));
+    return str1.compare(str2) < 0 ? true : false;
   }
 };
 
@@ -152,24 +153,24 @@ void remove_half_edges(std::vector<int> heToBeRemoved, std::vector<HalfEdge>& ha
 
   for (int i = heToBeRemoved.size() - 1; i >= 0; i--)
   {
-    for (auto& kv : halfEdgesMap)
-    {
-      if (kv.second.first >= heToBeRemoved[i])
-      {
-        kv.second.first--;
-      }
-      if (kv.second.second >= heToBeRemoved[i])
-      {
-        kv.second.second--;
-      }
-    }
-
     halfEdges.erase(halfEdges.begin() + heToBeRemoved[i]);
     for (HalfEdge& he : halfEdges)
     {
       if (he.next > heToBeRemoved[i])
       {
         he.next--;
+      }
+    }
+
+    for (auto& kv : halfEdgesMap)
+    {
+      if (kv.second.first > heToBeRemoved[i])
+      {
+        kv.second.first--;
+      }
+      if (kv.second.second > heToBeRemoved[i])
+      {
+        kv.second.second--;
       }
     }
   }
@@ -217,7 +218,9 @@ void remove_doublet(Eigen::MatrixXd& V, Eigen::MatrixXi& F, int startingHalfEdge
 bool diag_collapse(Eigen::MatrixXd& V, Eigen::MatrixXi& F, std::vector<HalfEdge>& halfEdges,
   std::map<Edge, std::pair<int, int>, compareTwoEdges>& halfEdgesMap)
 {
-  Eigen::RowVector4i face = F.row(6);
+  int fToBeRemoved = 42; //TODO remove this line
+  
+  Eigen::RowVector4i face = F.row(fToBeRemoved);
   double diag1 = distance_two_points(V.row(face[0]), V.row(face[2]));
   double diag2 = distance_two_points(V.row(face[3]), V.row(face[1]));
 
@@ -295,7 +298,7 @@ bool diag_collapse(Eigen::MatrixXd& V, Eigen::MatrixXi& F, std::vector<HalfEdge>
 
   // Remove the half-edges belong to the face to be deleted
   halfEdgesMap.erase(edge);
-  halfEdgesMap.erase(find_edge(face, halfEdges[finalHe].vertex));
+  halfEdgesMap.erase(Edge{ secondVertex, halfEdges[finalHe].vertex });
   
   std::vector<int> heToBeRemoved{ initialHe, halfEdges[initialHe].next,
     halfEdges[halfEdges[initialHe].next].next , finalHe };
@@ -314,7 +317,7 @@ bool diag_collapse(Eigen::MatrixXd& V, Eigen::MatrixXi& F, std::vector<HalfEdge>
   }
 
   // Remove one quad face
-  remove_face(F, 6, halfEdges);
+  remove_face(F, fToBeRemoved, halfEdges);
 
   // Move one vertex and remove the other
   Eigen::RowVector3d newPos = 0.5 * V.row(firstVertex) + 0.5 * V.row(secondVertex);
@@ -336,15 +339,28 @@ bool diag_collapse(Eigen::MatrixXd& V, Eigen::MatrixXi& F, std::vector<HalfEdge>
   int startingHe1 = halfEdges[p1.first].vertex == vertsToBeCleaned[1] ? p1.first : p1.second;
   int startingHe2 = halfEdges[p2.first].vertex == vertsToBeCleaned[2] ? p2.first : p2.second;
 
-  if (halfEdges[opposite_half_edge(halfEdges[opposite_half_edge(startingHe1, halfEdges, 
-    halfEdgesMap)].next, halfEdges, halfEdgesMap)].next == startingHe1) // Doublet found
+  bool doublet1 = halfEdges[opposite_half_edge(halfEdges[opposite_half_edge(startingHe1, 
+    halfEdges, halfEdgesMap)].next, halfEdges, halfEdgesMap)].next == startingHe1;
+  bool doublet2 = halfEdges[opposite_half_edge(halfEdges[opposite_half_edge(startingHe2, 
+    halfEdges, halfEdgesMap)].next, halfEdges, halfEdgesMap)].next == startingHe2;
+
+  if (doublet1 && doublet2)
+  {
+    remove_doublet(V, F, startingHe1, vertsToBeCleaned[1], halfEdges, halfEdgesMap);
+    
+    int vertToBeCleaned = vertsToBeCleaned[2] > vertsToBeCleaned[1] ? 
+      vertsToBeCleaned[2] - 1 : vertsToBeCleaned[2];
+    p2 = halfEdgesMap[Edge{ vertsToBeCleaned[0] > vertsToBeCleaned[1] ? 
+      vertsToBeCleaned[0] - 1 : vertsToBeCleaned[0], vertToBeCleaned }];
+    startingHe2 = halfEdges[p2.first].vertex == vertToBeCleaned ? p2.first : p2.second;
+    remove_doublet(V, F, startingHe2, vertToBeCleaned, halfEdges, halfEdgesMap);
+  }
+  else if (doublet1)
   {
     remove_doublet(V, F, startingHe1, vertsToBeCleaned[1], halfEdges, halfEdgesMap);
   }
-
-  if (halfEdges[opposite_half_edge(halfEdges[opposite_half_edge(startingHe2, halfEdges,
-    halfEdgesMap)].next, halfEdges, halfEdgesMap)].next == startingHe2) // Doublet found
-  {  
+  else if (doublet2)
+  {
     remove_doublet(V, F, startingHe2, vertsToBeCleaned[2], halfEdges, halfEdgesMap);
   }
   
@@ -402,15 +418,13 @@ bool start_simplification(Eigen::MatrixXd& V, Eigen::MatrixXi& F, int finalNumbe
       halfEdges[kv.second.second].vertex << " -- " << halfEdges[kv.second.second].face << " -- " << halfEdges[kv.second.second].next << "\n";
   }*/
 
-  for (int i = 0; i < 29; i++)
+  for (int i = 0; i < 26; i++)
   {
-    /*if (!diag_collapse(V, F, halfEdges, halfEdgesMap))
+    if (!diag_collapse(V, F, halfEdges, halfEdgesMap))
     {
       return false;
-    }*/
-
-    diag_collapse(V, F, halfEdges, halfEdgesMap);
-    std::cout << i + 1 << "\n";
+    }
+    std::cout << i << "\n";
   }
 
   /*Eigen::MatrixXi newF(10, F.cols());
