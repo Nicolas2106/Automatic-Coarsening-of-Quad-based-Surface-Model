@@ -24,6 +24,7 @@ bool operator!=(const HalfEdge& he1, const HalfEdge& he2)
 }
 
 typedef Eigen::RowVector2i Edge;
+
 bool operator==(const Edge e1, const Edge e2)
 {
   return (e1[0] == e2[0] && e1[1] == e2[1]) || 
@@ -32,11 +33,8 @@ bool operator==(const Edge e1, const Edge e2)
 
 struct compareTwoEdges {
   bool operator()(const Edge e1, const Edge e2) const {
-    std::string str1 = std::to_string(std::min(e1[0], e1[1])) +
-      std::to_string(std::max(e1[0], e1[1]));
-    std::string str2 = std::to_string(std::min(e2[0], e2[1])) +
-      std::to_string(std::max(e2[0], e2[1]));
-    return str1.compare(str2) < 0 ? true : false;
+    int min1 = std::min(e1[0], e1[1]), min2 = std::min(e2[0], e2[1]);
+    return min1 == min2 ? std::max(e1[0], e1[1]) < std::max(e2[0], e2[1]) : min1 < min2;
   }
 };
 
@@ -45,7 +43,7 @@ int opposite_half_edge(int halfEdge, std::vector<HalfEdge> halfEdges,
 {
   HalfEdge he = halfEdges[halfEdge];
   std::pair<int, int> pair = halfEdgesMap[Edge{ he.vertex, halfEdges[he.next].vertex}];
-  return halfEdges[pair.first] == he ? pair.second : pair.first;
+  return pair.first == halfEdge ? pair.second : pair.first;
 }
 
 double distance_two_points(Eigen::RowVector3d point1, Eigen::RowVector3d point2)
@@ -132,28 +130,30 @@ std::vector<int> half_edges_from_vertex(int vertex, std::vector<HalfEdge> halfEd
   std::map<Edge, std::pair<int, int>, compareTwoEdges> halfEdgesMap)
 {
   std::vector<int> hes;
+  int he = -1;
   for (int i = 0; i < halfEdges.size(); i++)
   {
     if (halfEdges[i].vertex == vertex)
     {
-      hes.push_back(i);
+      he = i;
       break;
     }
   }
+  if (he == -1) return hes;
 
-  int heTmp = opposite_half_edge(
-    halfEdges[halfEdges[halfEdges[hes[0]].next].next].next, halfEdges, halfEdgesMap);
-  while (heTmp != hes[0])
+  int heTmp = halfEdges[opposite_half_edge(he, halfEdges, halfEdgesMap)].next;
+  while (heTmp != he)
   {
     hes.push_back(heTmp);
-    heTmp = opposite_half_edge(
-      halfEdges[halfEdges[halfEdges[heTmp].next].next].next, halfEdges, halfEdgesMap);
+    heTmp = halfEdges[opposite_half_edge(heTmp, halfEdges, halfEdgesMap)].next;
   }
+  hes.push_back(he);
+  std::reverse(hes.begin(), hes.end());
   
   return hes;
 }
 
-std::vector<Edge> get_edges_from_he_map(
+std::vector<Edge> edges_from_he_map(
   std::map<Edge, std::pair<int, int>, compareTwoEdges> halfEdgesMap)
 {
   std::vector<Edge> keys;
@@ -202,16 +202,18 @@ void remove_face(Eigen::MatrixXi& F, int rowIndex, std::vector<HalfEdge>& halfEd
   }
 }
 
-void remove_vertex(Eigen::MatrixXd& V, int rowIndex, Eigen::MatrixXi& F, 
-  std::vector<HalfEdge>& halfEdges, std::map<Edge, std::pair<int, int>, 
-  compareTwoEdges>& halfEdgesMap, std::vector<std::pair<int, int>>& diagonals,
-  int vertexToBeMantained)
+void remove_vertex(Eigen::MatrixXd& V, int rowIndex, 
+  Eigen::MatrixXi& F, std::vector<HalfEdge>& halfEdges, 
+  std::map<Edge, std::pair<int, int>, compareTwoEdges>& halfEdgesMap, 
+  std::vector<std::pair<int, int>>& diagonals, int substituteVertex)
 {
+  // Modify the matrix V removing one row (= one vertex)
   Eigen::MatrixXd newV(V.rows() - 1, V.cols());
   newV << V.topRows(rowIndex), V.bottomRows(V.rows() - rowIndex - 1);
   V.conservativeResize(V.rows() - 1, Eigen::NoChange);
   V = newV;
 
+  // Modify the vertices' indices inside the matrix F
   for (int i = 0; i < F.rows(); i++)
   {
     for (int j = 0; j < 4; j++)
@@ -223,7 +225,7 @@ void remove_vertex(Eigen::MatrixXd& V, int rowIndex, Eigen::MatrixXi& F,
     }
   }
 
-  // Modify half-edges involved in the vertex's deletion 
+  // Modify the vertices' indices inside halfEdges vector
   for (HalfEdge& he : halfEdges)
   {
     if (he.vertex > rowIndex)
@@ -235,28 +237,11 @@ void remove_vertex(Eigen::MatrixXd& V, int rowIndex, Eigen::MatrixXi& F,
   std::map<Edge, std::pair<int, int>, compareTwoEdges> newHalfEdgesMap;
   for (auto& kv : halfEdgesMap)
   {
-    if (kv.first[0] > rowIndex && kv.first[1] > rowIndex)
-    {
-      newHalfEdgesMap.insert(std::pair<Edge, std::pair<int, int>>(
-        Edge{ kv.first[0] - 1, kv.first[1] - 1 }, kv.second));
-    }
-    else if (kv.first[0] > rowIndex)
-    {
-      newHalfEdgesMap.insert(std::pair<Edge, std::pair<int, int>>(
-        Edge{ kv.first[0] - 1, kv.first[1] }, kv.second));
-    }
-    else if (kv.first[1] > rowIndex)
-    {
-      newHalfEdgesMap.insert(std::pair<Edge, std::pair<int, int>>(
-        Edge{ kv.first[0], kv.first[1] - 1 }, kv.second));
-    }
-    else
-    {
-      newHalfEdgesMap.insert(std::pair<Edge, std::pair<int, int>>(
-        kv.first, kv.second));
-    }
+    int vert1 = kv.first[0] > rowIndex ? kv.first[0] - 1 : kv.first[0];
+    int vert2 = kv.first[1] > rowIndex ? kv.first[1] - 1 : kv.first[1];
+    newHalfEdgesMap.insert(std::pair<Edge, std::pair<int, int>>(
+      Edge{ vert1, vert2 }, kv.second));
   }
-
   halfEdgesMap = newHalfEdgesMap;
 
   // Modify the diagonals involved in the vertex's deletion
@@ -264,14 +249,15 @@ void remove_vertex(Eigen::MatrixXd& V, int rowIndex, Eigen::MatrixXi& F,
   {
     if (diagonals[i].first == rowIndex)
     {
-      diagonals[i].first = vertexToBeMantained;
+      diagonals[i].first = substituteVertex;
     }
     if (diagonals[i].second == rowIndex)
     {
-      diagonals[i].second = vertexToBeMantained;
+      diagonals[i].second = substituteVertex;
     }
   }
 
+  // Modify the vertices' indices for diagonals
   for (int i = 0; i < diagonals.size(); i++)
   {
     if (diagonals[i].first > rowIndex)
@@ -853,7 +839,6 @@ bool diagonal_collapse(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
     }
   }
 
-  // Remove a quad face
   remove_face(F, faceIndex, halfEdges, diagonals);
 
   std::vector<int> verticesForCentroid;
@@ -870,7 +855,6 @@ bool diagonal_collapse(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
   std::vector<int> faceVertices = { face[0], face[1], face[2], face[3] };
   V.row(vertexToBeMantained) = new_vertex_pos(V, verticesForCentroid, faceVertices);
 
-  // Remove a vertex
   remove_vertex(V, vertexToBeRemoved, F, halfEdges, halfEdgesMap, 
     diagonals, vertexToBeMantained);
 
@@ -935,19 +919,18 @@ bool edge_collapse(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
   if (result.first)
   {
     bool success = diagonal_collapse(V, F, halfEdges, halfEdgesMap, diagonals,
-      vertexToBeRemoved, vertexToBeMantained);
+      vertexToBeMantained, vertexToBeRemoved);
     if (!success) return false;
   }
 
   return true;
 }
 
-// Edge collapse and diagonal collapse
+// Edge collapse or diagonal collapse
 bool coarsen_quad_mesh(Eigen::MatrixXd& V, Eigen::MatrixXi& F, 
   std::vector<HalfEdge>& halfEdges,
   std::map<Edge, std::pair<int, int>, compareTwoEdges>& halfEdgesMap, 
-  std::vector<std::pair<int, int>>& diagonals, 
-  std::vector<Edge> edges)
+  std::vector<std::pair<int, int>>& diagonals, std::vector<Edge> edges)
 {
   // Search for the shortest element (edge or diagonal)
   MinHeapCompare minHeap{ V };
@@ -1005,7 +988,6 @@ bool start_simplification(Eigen::MatrixXd& V, Eigen::MatrixXi& F, int finalNumbe
     diagonals.push_back(std::make_pair(face[0], face[2]));
     diagonals.push_back(std::make_pair(face[1], face[3]));
 
-
     std::vector<Edge> faceEdges = find_edges(face);
     // Retrieve edges and compute four half-edges
     for (int j = 0; j < 4; j++)
@@ -1026,7 +1008,7 @@ bool start_simplification(Eigen::MatrixXd& V, Eigen::MatrixXi& F, int finalNumbe
       }
       else
       {
-        // If the half-edge exists
+        // If the half-edge already exists
         std::pair<int, int>* hes = &halfEdgesMap[faceEdges[j]];
         (*hes).second = halfEdges.size() - 1;
       }
@@ -1034,21 +1016,19 @@ bool start_simplification(Eigen::MatrixXd& V, Eigen::MatrixXi& F, int finalNumbe
   }
   
   // Initial global optimization of the quad mesh
-  std::vector<int> vertices;
+  /*std::vector<int> vertices;
   for (int i = 0; i < V.rows(); i++)
   {
     vertices.push_back(i);
   }
   optimize_quad_mesh(V, F, halfEdges, halfEdgesMap, diagonals, 
-    get_edges_from_he_map(halfEdgesMap), vertices);
+    get_edges_from_he_map(halfEdgesMap), vertices); TODO how to do with this? */
   
-  std::cout << F.rows() << "\n"; // TODO delete this line
+
   while (F.rows() > finalNumberOfFaces)
   { 
-    coarsen_quad_mesh(V, F, halfEdges, halfEdgesMap, diagonals, 
-      get_edges_from_he_map(halfEdgesMap));
-
-    //std::cout << F.rows() << "\n"; // TODO delete this line
+    coarsen_quad_mesh(V, F, halfEdges, halfEdgesMap, diagonals, edges_from_he_map(halfEdgesMap));
+    std::cout << F.rows() << "\n"; // TODO delete this line
   }
 
   return true;
@@ -1146,7 +1126,7 @@ int main(int argc, char *argv[])
   //igl::readOFF(MESHES_DIR + "edge_rotate_doublet.off", V, F);
   igl::readOBJ(MESHES_DIR + "quad_cubespikes.obj", V, F);
 
-  if (start_simplification(V, F, 1000))
+  if (start_simplification(V, F, 1100))
   {
     draw_quad_mesh(V, F);
   }
@@ -1154,4 +1134,22 @@ int main(int argc, char *argv[])
   {
     std::cout << "\n\n" << "ERROR occured during quad mesh simplification" << "\n\n";
   }
+
+  // TODO delete all below
+  /*std::map<Edge, std::pair<int, int>, compareTwoEdges> hem;
+  hem.insert(std::pair<Edge, std::pair<int, int>>(Edge{ 0,1 }, std::make_pair(3, 2)));
+  hem.insert(std::pair<Edge, std::pair<int, int>>(Edge{ 1,2 }, std::make_pair(4, 1)));
+  hem.insert(std::pair<Edge, std::pair<int, int>>(Edge{ 4,3 }, std::make_pair(8, 9)));
+  hem.insert(std::pair<Edge, std::pair<int, int>>(Edge{ 15, 1 }, std::make_pair(1, 2)));
+
+  const Edge oldKey{1, 2};
+  const Edge newKey{1, 0};
+  const auto it = hem.find(oldKey);
+  if (it != hem.end()) {
+    // Swap value from oldKey to newKey, note that a default constructed value 
+    // is created by operator[] if 'm' does not contain newKey.
+    std::swap(hem[newKey], it->second);
+    // Erase old key-value from map
+    hem.erase(it);
+  }*/
 }
