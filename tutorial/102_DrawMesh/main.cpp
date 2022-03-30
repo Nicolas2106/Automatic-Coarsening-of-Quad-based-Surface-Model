@@ -16,8 +16,8 @@ typedef Eigen::RowVector2i Edge;
 
 bool operator==(const Edge e1, const Edge e2)
 {
-  return (e1[0] == e2[0] && e1[1] == e2[1]) || 
-    (e1[1] == e2[0] && e1[0] == e2[1]);
+  int e10 = e1[0], e11 = e1[1], e20 = e2[0], e21 = e2[1];
+  return (e10 == e20 && e11 == e21) || (e11 == e20 && e10 == e21);
 }
 
 struct compareTwoEdges {
@@ -535,7 +535,7 @@ bool try_edge_rotation(Edge edge, Eigen::MatrixXd& V, Eigen::MatrixXi& F,
   return true;
 }
 
-std::pair<bool, std::vector<int>> try_vertex_rotation(const int vert,
+std::pair<bool, std::vector<int>> try_vertex_rotation(int vert,
   Eigen::MatrixXd& V, Eigen::MatrixXi& F, std::vector<HalfEdge>& halfEdges,
   std::map<Edge, std::pair<int, int>, compareTwoEdges>& halfEdgesMap,
   std::vector<std::pair<int, int>>& diagonals, const bool forceRotation, 
@@ -561,12 +561,15 @@ std::pair<bool, std::vector<int>> try_vertex_rotation(const int vert,
     bool endLoop = false;
     for (std::pair<int, int>& diagonal : diagonals)
     {
-      if (Edge{ diagonal.first, diagonal.second } == Edge{ face[0], face[2] } ||
-        Edge{ diagonal.first, diagonal.second } == Edge{ face[1], face[3] })
+      if ((diagonal.first == face[0] && diagonal.second == face[2]) || 
+        (diagonal.second == face[0] && diagonal.first == face[2]) ||
+        (diagonal.first == face[1] && diagonal.second == face[3]) || 
+        (diagonal.second == face[1] && diagonal.first == face[3]))
       {
         diagonalsInvolved.push_back(&diagonal);
         if (endLoop) break;
-        endLoop = !endLoop;
+
+        endLoop = true;
       }
     }
   }
@@ -645,12 +648,14 @@ std::pair<bool, std::vector<int>> try_vertex_rotation(const int vert,
     }
 
     // Modify the diagonals involved in the rotation
-    for (int he : hes)
+    for (int i = 0; i < hes.size(); ++i)
     {
+      int he = hes[i];
       for (std::pair<int, int>* diag : diagonalsInvolved)
       {
         std::pair<int, int> diagonal = *diag;
-        HalfEdge oppositeHe = halfEdges[opposite_half_edge(he, halfEdges, halfEdgesMap)];
+        int v = halfEdges[halfEdges[halfEdges[hes[(hes.size() + i - 1) % hes.size()]]
+          .next].next].vertex;
         HalfEdge heTmp = halfEdges[halfEdges[he].next];
 
         if (Edge{ diagonal.first, diagonal.second } == Edge{ halfEdges[he].vertex,
@@ -663,8 +668,7 @@ std::pair<bool, std::vector<int>> try_vertex_rotation(const int vert,
             (*diag).second = heTmp.vertex;
         }
         else if (Edge{ diagonal.first, diagonal.second } ==
-          Edge{ halfEdges[heTmp.next].vertex,
-          halfEdges[halfEdges[halfEdges[oppositeHe.next].next].next].vertex })
+          Edge{ halfEdges[heTmp.next].vertex, v })
         {
           if (diagonal.first == halfEdges[heTmp.next].vertex)
             (*diag).second = vert;
@@ -678,15 +682,23 @@ std::pair<bool, std::vector<int>> try_vertex_rotation(const int vert,
     std::vector<std::pair<int, int>> doubletVerts;
     for (int he : hes)
     {
-      int startingHe = halfEdges[halfEdges[he].next].next;
-      if (halfEdges[opposite_half_edge(halfEdges[opposite_half_edge(startingHe,
-        halfEdges, halfEdgesMap)].next, halfEdges, halfEdgesMap)].next == startingHe)
+      int startingHeVertex = halfEdges[halfEdges[halfEdges[he].next].next].vertex;
+      std::vector<int> hesFromVertex;
+      for (int i = 0; i < halfEdges.size(); ++i)
+      {
+        if (halfEdges[i].vertex == startingHeVertex)
+        {
+          hesFromVertex.push_back(i);
+        }
+      }
+      if (hesFromVertex.size() == 2)
       {
         // Doublet found
-        result.second.push_back(halfEdges[startingHe].vertex);
-        doubletVerts.push_back(std::make_pair(halfEdges[startingHe].vertex, 
-          halfEdges[halfEdges[startingHe].next].vertex));
-        if (halfEdges[startingHe].vertex == vertToBeMantained)
+        result.second.push_back(startingHeVertex);
+        int tmp = halfEdges[halfEdges[he].next].next;
+        doubletVerts.push_back(std::make_pair(startingHeVertex,
+          halfEdges[halfEdges[tmp].next].vertex));
+        if (halfEdges[tmp].vertex == vertToBeMantained)
         {
           result.first = false; // Disable the possible next diagonal collapse
         }
@@ -1138,7 +1150,7 @@ int main(int argc, char *argv[])
   //igl::readOFF(MESHES_DIR + "edge_rotate_doublet.off", V, F);
   igl::readOBJ(MESHES_DIR + "quad_cubespikes.obj", V, F);
 
-  if (start_simplification(V, F, 1100))
+  if (start_simplification(V, F, 1000))
   {
     draw_quad_mesh(V, F);
   }
@@ -1146,4 +1158,16 @@ int main(int argc, char *argv[])
   {
     std::cout << "\n\n" << "ERROR occured during quad mesh simplification" << "\n\n";
   }
+
+  /*std::map<Edge, std::pair<int, int>, compareTwoEdges> m;
+  m.emplace(Edge{ 2, 3 }, std::make_pair(1, 2));
+  m.emplace(Edge{ 5, 6 }, std::make_pair(3, 2));
+  m.emplace(Edge{ 9, 2 }, std::make_pair(8, 4));
+
+  std::map<Edge, std::pair<int, int>, compareTwoEdges>::iterator it = m.find(Edge{2, 9});
+  if (it != m.end()) {
+    std::swap(m[Edge{99, 98}], it->second);
+    m.erase(it);
+  } TODO delete */
+
 }
