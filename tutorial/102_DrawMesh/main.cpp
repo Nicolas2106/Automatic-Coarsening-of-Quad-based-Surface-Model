@@ -29,12 +29,12 @@ struct compareTwoEdges {
   }
 };
 
-double distance_two_points(Eigen::RowVector3d point1, Eigen::RowVector3d point2)
+double squared_distance(Eigen::RowVector3d point1, Eigen::RowVector3d point2)
 {
   double deltaX = point1[0] - point2[0],
     deltaY = point1[1] - point2[1],
     deltaZ = point1[2] - point2[2];
-  return std::sqrt(deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ);
+  return deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ;
 }
 
 typedef struct {
@@ -42,14 +42,14 @@ typedef struct {
   
   // For diagonals
   bool operator()(const std::pair<int, int> d1, const std::pair<int, int> d2) const {
-    return distance_two_points(V.row(d1.first), V.row(d1.second)) >
-      distance_two_points(V.row(d2.first), V.row(d2.second));
+    return squared_distance(V.row(d1.first), V.row(d1.second)) >
+      squared_distance(V.row(d2.first), V.row(d2.second));
   }
 
   // For edges
   bool operator()(const Edge e1, const Edge e2) const {
-    return distance_two_points(V.row(e1[0]), V.row(e1[1])) >
-      distance_two_points(V.row(e2[0]), V.row(e2[1]));
+    return squared_distance(V.row(e1[0]), V.row(e1[1])) >
+      squared_distance(V.row(e2[0]), V.row(e2[1]));
   }
 } MinHeapCompare;
 
@@ -363,16 +363,16 @@ bool try_edge_rotation(Edge edge, Eigen::MatrixXd& V, Eigen::MatrixXi& F,
   HalfEdge& secondHe4 = halfEdges[secondHe3.next];
 
   // Edge rotation is profitable if it shortens the rotated edge and both the diagonals
-  double oldEdgeLength = distance_two_points(V.row(firstHe1.vertex), V.row(secondHe1.vertex));
-  double oldDiag1Length = distance_two_points(V.row(firstHe4.vertex), V.row(firstHe2.vertex));
-  double oldDiag2Length = distance_two_points(V.row(firstHe1.vertex), V.row(secondHe4.vertex));
-  double oldDiag3Length = distance_two_points(V.row(firstHe1.vertex), V.row(firstHe3.vertex));
-  double oldDiag4Length = distance_two_points(V.row(secondHe3.vertex), V.row(secondHe1.vertex));
+  double oldEdgeLength = squared_distance(V.row(firstHe1.vertex), V.row(secondHe1.vertex));
+  double oldDiag1Length = squared_distance(V.row(firstHe4.vertex), V.row(firstHe2.vertex));
+  double oldDiag2Length = squared_distance(V.row(firstHe1.vertex), V.row(secondHe4.vertex));
+  double oldDiag3Length = squared_distance(V.row(firstHe1.vertex), V.row(firstHe3.vertex));
+  double oldDiag4Length = squared_distance(V.row(secondHe3.vertex), V.row(secondHe1.vertex));
 
-  double edgeClockLength = distance_two_points(V.row(firstHe4.vertex), V.row(secondHe4.vertex));
-  double edgeCounterLength = distance_two_points(V.row(firstHe3.vertex), V.row(secondHe3.vertex));
-  double newDiag1Length = distance_two_points(V.row(firstHe3.vertex), V.row(secondHe4.vertex));
-  double newDiag2Length = distance_two_points(V.row(firstHe4.vertex), V.row(secondHe3.vertex));
+  double edgeClockLength = squared_distance(V.row(firstHe4.vertex), V.row(secondHe4.vertex));
+  double edgeCounterLength = squared_distance(V.row(firstHe3.vertex), V.row(secondHe3.vertex));
+  double newDiag1Length = squared_distance(V.row(firstHe3.vertex), V.row(secondHe4.vertex));
+  double newDiag2Length = squared_distance(V.row(firstHe4.vertex), V.row(secondHe3.vertex));
 
   int firstDoubletHe = firstHe1.next;
   std::pair<int, int> secondDoubletCheck = std::make_pair(secondHe2.vertex, secondHe3.vertex);
@@ -555,8 +555,8 @@ std::pair<bool, std::vector<int>> try_vertex_rotation(int vert,
   for (int he : hes)
   {
     HalfEdge h = halfEdges[he];
-    edgesSum += distance_two_points(vertex, V.row(halfEdges[h.next].vertex));
-    diagonalsSum += distance_two_points(vertex,
+    edgesSum += squared_distance(vertex, V.row(halfEdges[h.next].vertex));
+    diagonalsSum += squared_distance(vertex,
       V.row(halfEdges[halfEdges[h.next].next].vertex));
 
     Eigen::RowVector4i face = F.row(h.face);
@@ -974,8 +974,8 @@ bool coarsen_quad_mesh(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
   Edge shortestEdge = *edges.begin();
   for (Edge e : edges)
   {
-    if (distance_two_points(vertices[e[0]], vertices[e[1]]) <
-      distance_two_points(vertices[shortestEdge[0]], vertices[shortestEdge[1]]))
+    if (squared_distance(vertices[e[0]], vertices[e[1]]) <
+      squared_distance(vertices[shortestEdge[0]], vertices[shortestEdge[1]]))
     {
       shortestEdge = e;
     }
@@ -989,22 +989,23 @@ bool coarsen_quad_mesh(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
   {
     currDiag = diagonals[i];
     currMinDiag = diagonals[min];
-    if (distance_two_points(vertices[currDiag.first], vertices[currDiag.second]) <
-      distance_two_points(vertices[currMinDiag.first], vertices[currMinDiag.second]))
+    if (squared_distance(vertices[currDiag.first], vertices[currDiag.second]) <
+      squared_distance(vertices[currMinDiag.first], vertices[currMinDiag.second]))
     {
       min = i;
     }
   }
   std::pair<int, int> shortestDiagonal = diagonals[min];
 
-  double shortestEdgeLength = distance_two_points(
-    V.row(shortestEdge[0]), V.row(shortestEdge[1]));
+  double shortestEdgeLength = squared_distance(vertices[shortestEdge[0]], 
+    vertices[shortestEdge[1]]);
   
-  double shortestDiagonalLength = distance_two_points(
-    V.row(shortestDiagonal.first), V.row(shortestDiagonal.second));
+  double shortestDiagonalLength = squared_distance(vertices[shortestDiagonal.first],
+    vertices[shortestDiagonal.second]);
 
   int vertexMantained, vertexRemoved;
-  if (shortestDiagonalLength / sqrt(2) < shortestEdgeLength)
+  double sqrt2 = sqrt(2);
+  if (shortestDiagonalLength / (sqrt2 * sqrt2) < shortestEdgeLength)
   {
     /* Diagonal collapse */
     vertexMantained = shortestDiagonal.second;
@@ -1169,7 +1170,7 @@ int main(int argc, char *argv[])
   //igl::readOFF(MESHES_DIR + "edge_rotate_doublet.off", V, F);
   igl::readOBJ(MESHES_DIR + "quad_cubespikes.obj", V, F);
 
-  if (start_simplification(V, F, 1000)) 
+  if (start_simplification(V, F, 300)) 
   {
     draw_quad_mesh(V, F);
   }
