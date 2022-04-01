@@ -6,6 +6,8 @@
 #include <igl/opengl/glfw/Viewer.h>
 #include <igl/per_face_normals.h>
 #include "tutorial_shared_path.h"
+#include <array>
+
 struct HalfEdge {
   int vertex; // Index of the vertex from which the half-edge starts
   int face; // Index of the face
@@ -238,7 +240,6 @@ void remove_vertex(Eigen::MatrixXd& V, int rowIndex,
   std::set<Edge, compareTwoEdges> emptySet;
   std::swap(edges, emptySet);
   std::set<Edge, compareTwoEdges>::iterator hint = edges.end();
-  
   for (Edge& e : vec)
   {
     if (e[0] > rowIndex) --e[0];
@@ -962,17 +963,43 @@ bool coarsen_quad_mesh(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
   std::vector<HalfEdge>& halfEdges, std::set<Edge, compareTwoEdges>& edges,
   std::vector<std::pair<int, int>>& diagonals)
 {
-  // Search for the shortest element (edge and diagonal)
-  MinHeapCompare minHeap{ V };
-  std::vector<Edge> edgesForHeap(edges.begin(), edges.end());
-  std::make_heap(edgesForHeap.begin(), edgesForHeap.end(), minHeap);
-  std::make_heap(diagonals.begin(), diagonals.end(), minHeap);
+  std::vector<Eigen::RowVector3d> vertices;
+  int size = V.rows();
+  for (int i = 0; i < size; ++i)
+  {
+    vertices.push_back(V.row(i));
+  }
+  
+  // Search for the shortest edge
+  Edge shortestEdge = *edges.begin();
+  for (Edge e : edges)
+  {
+    if (distance_two_points(vertices[e[0]], vertices[e[1]]) <
+      distance_two_points(vertices[shortestEdge[0]], vertices[shortestEdge[1]]))
+    {
+      shortestEdge = e;
+    }
+  }
 
-  Edge shortestEdge = edgesForHeap.front();
+  // Search for the shortest diagonal
+  int min = 0;
+  std::pair<int, int> currDiag, currMinDiag;
+  size = diagonals.size();
+  for (int i = 0; i < size; ++i)
+  {
+    currDiag = diagonals[i];
+    currMinDiag = diagonals[min];
+    if (distance_two_points(vertices[currDiag.first], vertices[currDiag.second]) <
+      distance_two_points(vertices[currMinDiag.first], vertices[currMinDiag.second]))
+    {
+      min = i;
+    }
+  }
+  std::pair<int, int> shortestDiagonal = diagonals[min];
+
   double shortestEdgeLength = distance_two_points(
     V.row(shortestEdge[0]), V.row(shortestEdge[1]));
   
-  std::pair<int, int> shortestDiagonal = diagonals.front();
   double shortestDiagonalLength = distance_two_points(
     V.row(shortestDiagonal.first), V.row(shortestDiagonal.second));
 
@@ -999,7 +1026,7 @@ bool coarsen_quad_mesh(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
   // Final local optimization
   int v = vertexMantained > vertexRemoved ? vertexMantained - 1 : vertexMantained;
   optimize_quad_mesh(V, F, halfEdges, edges, diagonals,
-    edges_from_vertex(v, halfEdges), std::vector<int>{ v });
+    edges_from_vertex(v, halfEdges), { v });
 
   return true;
 }
@@ -1030,19 +1057,19 @@ bool start_simplification(Eigen::MatrixXd& V, Eigen::MatrixXi& F, int finalNumbe
           i, // face
           (i * 4) + (int(halfEdges.size() + 1) % 4) // next
         });
-
+      
       edges.emplace_hint(edges.end(), faceEdges[j]);
     }
   }
   
-  // Initial global optimization of the quad mesh
-  /*std::vector<int> vertices;
+  /* // Initial global optimization of the quad mesh
+  std::vector<int> vertices;
   for (int i = 0; i < V.rows(); ++i)
   {
     vertices.push_back(i);
   }
-  optimize_quad_mesh(V, F, halfEdges, halfEdgesMap, diagonals, 
-    get_edges_from_he_map(halfEdgesMap), vertices); TODO how to do with this? */
+  std::vector<Edge> eds(edges.begin(), edges.end());
+  optimize_quad_mesh(V, F, halfEdges, edges, diagonals, eds, vertices); TODO Should I insert that? */
   
 
   while (F.rows() > finalNumberOfFaces)
@@ -1099,9 +1126,6 @@ void draw_quad_mesh(const Eigen::MatrixXd& V, Eigen::MatrixXi& F)
   Eigen::VectorXi I, C, J;
   igl::polygon_corners(F, I, C);
   igl::polygons_to_triangles(I, C, f, J);
-  //std::cout << "\n\n" << J << "\n\n";
-
-  //std::cout << "\n\n" << f << "\n\n";
 
   // 2) For every quad, fit a plane and get the normal from that plane
   Eigen::MatrixXd N;
@@ -1112,7 +1136,6 @@ void draw_quad_mesh(const Eigen::MatrixXd& V, Eigen::MatrixXi& F)
     fN.row(i * 2) = N.row(i);
     fN.row(i * 2 + 1) = N.row(i);
   };
-  //std::cout << "\n\n" << f << "\n\n";
 
   // 3) Render the triangles, and assign to each one the normal 
   // of the corresponding polygon, and use per-face rendering
