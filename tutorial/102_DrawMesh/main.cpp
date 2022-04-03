@@ -55,22 +55,12 @@ typedef struct {
 
 std::vector<Edge> find_edges(Eigen::RowVector4i face)
 {
-  std::vector<Edge> edges;
+  std::vector<Edge> eds;
   for (int i = 0; i < 4; ++i)
   {
-    edges.push_back(Edge{ face[i], face[(i + 1) % 4] });
+    eds.push_back(Edge{ face[i], face[(i + 1) % 4] });
   }
-  return edges;
-}
-
-Edge find_edge(Eigen::RowVector4i face, int startingVertex)
-{
-  std::vector<Edge> edges = find_edges(face);
-  for (Edge edge : edges)
-  {
-    if (edge[0] == startingVertex) return edge;
-  }
-  assert(false && "An error occured while searching for an edge.");
+  return eds;
 }
 
 Eigen::RowVector3d new_vertex_pos(Eigen::MatrixXd& V, std::vector<int> vertices, 
@@ -192,17 +182,18 @@ void remove_face(Eigen::MatrixXi& F, int rowIndex, std::vector<HalfEdge>& halfEd
   {
     if (Edge{ diagonals[i].first, diagonals[i].second } == edge1)
     {
-      diagonals.erase(std::next(diagonals.begin(), i));
+      diagonals.erase(diagonals.begin() + i);
       break;
     }
   }
   
-  --size; // One diagonal deleted. It's time to delete the second one
+  // One diagonal deleted. It's time to delete the second one
+  --size;
   for (int i = 0; i < size; ++i)
   {
     if (Edge{ diagonals[i].first, diagonals[i].second } == edge2)
     {
-      diagonals.erase(std::next(diagonals.begin(), i));
+      diagonals.erase(diagonals.begin() + i);
       break;
     }
   }
@@ -240,28 +231,24 @@ void remove_vertex(Eigen::MatrixXd& V, int rowIndex,
   }
 
   std::vector<Edge> es(edges.begin(), edges.end());
-  // Clear edges set in a optimized way
-  std::set<Edge, compareTwoEdges> emptySet;
-  std::swap(edges, emptySet);
-  std::set<Edge, compareTwoEdges>::iterator hint = edges.end();
   for (Edge& e : es)
   {
-    if (e[0] > rowIndex) --e[0];
-    if (e[1] > rowIndex) --e[1];
-
-    edges.emplace_hint(hint, e);
+    if (e[0] > rowIndex) { --e[0]; }
+    if (e[1] > rowIndex) { --e[1]; }
   }
+  std::set<Edge, compareTwoEdges> newSet(es.begin(), es.end());
+  std::swap(edges, newSet);
 
   // Modify the diagonals involved in the vertex's deletion
   for (std::pair<int, int>& diag : diagonals)
   {
-    if (diag.first == rowIndex) diag.first = substituteVertex;
+    if (diag.first == rowIndex) { diag.first = substituteVertex; }
 
-    if (diag.second == rowIndex) diag.second = substituteVertex;
+    if (diag.second == rowIndex) { diag.second = substituteVertex; }
 
-    if (diag.first > rowIndex) --diag.first;
+    if (diag.first > rowIndex) { --diag.first; }
 
-    if (diag.second > rowIndex) --diag.second;
+    if (diag.second > rowIndex) { --diag.second; }
   }
 }
 
@@ -277,7 +264,7 @@ void remove_half_edges(std::vector<int> hesToBeRemoved, std::vector<HalfEdge>& h
     halfEdges.erase(std::next(halfEdges.begin(), heToBeRemoved));
     for (HalfEdge& he : halfEdges)
     {
-      if (he.next > heToBeRemoved) --he.next;
+      if (he.next > heToBeRemoved) { --he.next; }
     }
   }
 }
@@ -776,7 +763,16 @@ bool diagonal_collapse(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
       "An error occured while searching for a face during diag collapse.");
   }
 
-  Edge edge = find_edge(face, vertexToBeRemoved);
+  Edge edge{ -1, -1 };
+  for (int i = 0; i < 4; ++i)
+  {
+    if (face[i] == vertexToBeRemoved) 
+    { 
+      edge = { face[i], face[(i + 1) % 4] };
+      break;
+    }
+  }
+  if (edge[0] == -1) return false;
 
   int initialHe, initialHeOpposite, finalHe, finalHeOpposite = -1;
   std::pair<int, int> initial = half_edges_from_edge(halfEdges, edge);
@@ -1047,8 +1043,10 @@ bool start_simplification(Eigen::MatrixXd& V, Eigen::MatrixXi& F, int finalNumbe
   // Used to navigate through half-edges
   std::vector<HalfEdge> halfEdges;
 
+  // The set of the quad mesh's egdes
   std::set<Edge, compareTwoEdges> edges;
 
+  // The set of the quad mesh's diagonals
   std::vector<std::pair<int, int>> diagonals;
   
   int facesCount = F.rows();
@@ -1062,12 +1060,13 @@ bool start_simplification(Eigen::MatrixXd& V, Eigen::MatrixXi& F, int finalNumbe
     std::vector<Edge> faceEdges = find_edges(face);
     
     // Retrieve edges and compute four half-edges per face
+    int hesSize = halfEdges.size();
     for (int j = 0; j < 4; ++j)
     {
       halfEdges.push_back(HalfEdge{
           face[j], // vertex
           i, // face
-          (i * 4) + (int(halfEdges.size() + 1) % 4) // next
+          (i * 4) + (++hesSize % 4) // next
         });
       
       edges.emplace_hint(edges.end(), faceEdges[j]);
@@ -1087,6 +1086,7 @@ bool start_simplification(Eigen::MatrixXd& V, Eigen::MatrixXi& F, int finalNumbe
   while (F.rows() > finalNumberOfFaces)
   { 
     bool success = coarsen_quad_mesh(V, F, halfEdges, edges, diagonals);
+    std::cout << F.rows() << "\n"; // // TODO delete
     if (!success) return false;
   }
 
@@ -1104,18 +1104,14 @@ void per_quad_face_normals(const Eigen::MatrixXd& V, const Eigen::MatrixXi& F, E
   {
     Eigen::RowVector3d nN, C;
     Eigen::MatrixXd vV(4, 3);
-    vV <<
-      V.row(F(i, 0)),
-      V.row(F(i, 1)),
-      V.row(F(i, 2)),
-      V.row(F(i, 3));
+    Eigen::RowVector3d row0 = V.row(F(i, 0)), row1 = V.row(F(i, 1)),
+      row2 = V.row(F(i, 2)), row3 = V.row(F(i, 3));
+    
+    vV << row0, row1, row2, row3;
     igl::fit_plane(vV, nN, C);
 
     // Choose the correct normal direction
-    Eigen::Matrix<Eigen::MatrixXd::Scalar, 1, 3> v1 = V.row(F(i, 0)) - V.row(F(i, 2));
-    Eigen::Matrix<Eigen::MatrixXd::Scalar, 1, 3> v2 = V.row(F(i, 1)) - V.row(F(i, 3));
-    Eigen::RowVector3d cp = v1.cross(v2);
-
+    Eigen::RowVector3d cp = (row0 - row2).cross(row1 - row3);
     N.row(i) = cp.dot(nN) >= 0 ? nN : -nN;
   }
 }
@@ -1123,14 +1119,17 @@ void per_quad_face_normals(const Eigen::MatrixXd& V, const Eigen::MatrixXi& F, E
 void quad_corners(Eigen::MatrixXd& V, Eigen::MatrixXi& F, Eigen::VectorXi& I, Eigen::VectorXi& C)
 {
   I.resize(F.size());
-  C.resize(F.rows() + 1);
-  int c = 0;
+  int c = 0, rowsF = F.rows();
+  C.resize(rowsF + 1);
   C(0) = 0; 
+  
   Eigen::MatrixXd v;
   Eigen::MatrixXi f;
   v.conservativeResize(4, 3);
   f.conservativeResize(4, 3);
-  for (int p = 0; p < F.rows(); ++p)
+  
+  std::vector<int> verts;
+  for (int p = 0; p < rowsF; ++p)
   {
     // Check if the quad (2 triangle) is convex or concave and choose
     // the best two triangles (representing the quad) according to that
@@ -1146,19 +1145,18 @@ void quad_corners(Eigen::MatrixXd& V, Eigen::MatrixXi& F, Eigen::VectorXi& I, Ei
     f.row(3) << 0, 2, 3;
     igl::doublearea(v, f, a);
     
-    std::vector<int> vec;
     if (a[2] + a[3] < a[0] + a[1])
     {
-      vec = { face[0], face[1], face[2], face[3] };
+      verts = { face[0], face[1], face[2], face[3] };
     }
     else 
     {
-      vec = { face[1], face[2], face[3], face[0] };
+      verts = { face[1], face[2], face[3], face[0] };
     }
 
     for (int i = 0; i < 4; ++i)
     {
-      I(c++) = vec[i];
+      I(c++) = verts[i];
     }
     C(p + 1) = C(p) + 4;
   }
@@ -1205,6 +1203,8 @@ void draw_quad_mesh(Eigen::MatrixXd& V, Eigen::MatrixXi& F)
   viewer.launch();
 }
 
+#include <chrono> // TODO delete
+
 int main(int argc, char* argv[])
 {
   const std::string MESHES_DIR =
@@ -1218,8 +1218,11 @@ int main(int argc, char* argv[])
   igl::readOBJ(MESHES_DIR + "quad_cubespikes.obj", V, F);
 
   std::cout << "Quad mesh coarsening in progress...\n\n";
-  if (start_simplification(V, F, 300))
+  auto start_time = std::chrono::high_resolution_clock::now(); // TODO delete
+  if (start_simplification(V, F, 1000))
   {
+    auto end_time = std::chrono::high_resolution_clock::now(); // TODO delete
+    std::cout << "\n" << (end_time - start_time) / std::chrono::milliseconds(1) << " milliseconds\n\n"; // TODO delete
     std::cout << "Quad mesh drawing in progress...\n\n";
     draw_quad_mesh(V, F);
   }
