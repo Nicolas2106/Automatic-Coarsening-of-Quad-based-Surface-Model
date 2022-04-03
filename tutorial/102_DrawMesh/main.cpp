@@ -5,8 +5,8 @@
 #include <igl/polygons_to_triangles.h>
 #include <igl/opengl/glfw/Viewer.h>
 #include <igl/per_face_normals.h>
+#include <igl/doublearea.h>
 #include "tutorial_shared_path.h"
-#include <array>
 
 struct HalfEdge {
   int vertex; // Index of the vertex from which the half-edge starts
@@ -1087,7 +1087,6 @@ bool start_simplification(Eigen::MatrixXd& V, Eigen::MatrixXi& F, int finalNumbe
   while (F.rows() > finalNumberOfFaces)
   { 
     bool success = coarsen_quad_mesh(V, F, halfEdges, edges, diagonals);
-    std::cout << F.rows() << "\n"; // TODO delete this line
     if (!success) return false;
   }
 
@@ -1121,26 +1120,58 @@ void per_quad_face_normals(const Eigen::MatrixXd& V, const Eigen::MatrixXi& F, E
   }
 }
 
-void draw_quad_mesh(const Eigen::MatrixXd& V, Eigen::MatrixXi& F)
+void quad_corners(Eigen::MatrixXd& V, Eigen::MatrixXi& F, Eigen::VectorXi& I, Eigen::VectorXi& C)
+{
+  I.resize(F.size());
+  C.resize(F.rows() + 1);
+  int c = 0;
+  C(0) = 0; 
+  Eigen::MatrixXd v;
+  Eigen::MatrixXi f;
+  v.conservativeResize(4, 3);
+  f.conservativeResize(4, 3);
+  for (int p = 0; p < F.rows(); ++p)
+  {
+    // Check if the quad (2 triangle) is convex or concave and choose
+    // the best two triangles (representing the quad) according to that
+    Eigen::VectorXd a;
+    Eigen::RowVector4i face = F.row(p);
+    for (int i = 0; i < 4; ++i)
+    {
+      v.row(i) = V.row(face[i]);
+    }
+    f.row(0) << 0, 1, 3;
+    f.row(1) << 1, 2, 3;
+    f.row(2) << 0, 1, 2;
+    f.row(3) << 0, 2, 3;
+    igl::doublearea(v, f, a);
+    
+    std::vector<int> vec;
+    if (a[2] + a[3] < a[0] + a[1])
+    {
+      vec = { face[0], face[1], face[2], face[3] };
+    }
+    else 
+    {
+      vec = { face[1], face[2], face[3], face[0] };
+    }
+
+    for (int i = 0; i < 4; ++i)
+    {
+      I(c++) = vec[i];
+    }
+    C(p + 1) = C(p) + 4;
+  }
+  I.conservativeResize(c);
+}
+
+void draw_quad_mesh(Eigen::MatrixXd& V, Eigen::MatrixXi& F)
 {
   Eigen::MatrixXi f;
 
   // 1) Triangulate the polygonal mesh
-  std::vector<Edge> diagonals;
-  int facesCount = F.rows();
-  for (int i = 0; i < facesCount; ++i)
-  {
-    for (Edge diag : diagonals)
-    {
-      if (diag == Edge{ F.row(i)[0], F.row(i)[2] })
-      {
-        F.row(i) = Eigen::Vector4i{ F.row(i)[1], F.row(i)[2], F.row(i)[3], F.row(i)[0] };
-      }
-    }
-    diagonals.push_back(Edge{F.row(i)[0], F.row(i)[2]});
-  }
   Eigen::VectorXi I, C, J;
-  igl::polygon_corners(F, I, C);
+  quad_corners(V, F, I, C);
   igl::polygons_to_triangles(I, C, f, J);
 
   // 2) For every quad, fit a plane and get the normal from that plane
@@ -1161,7 +1192,7 @@ void draw_quad_mesh(const Eigen::MatrixXd& V, Eigen::MatrixXi& F)
 
   // 4) Add as a line overlay the set of all edges of the original polygonal mesh
   Eigen::MatrixXi E;
-  E.resize(facesCount * 4, 2);
+  E.resize(F.size(), 2);
   E <<
     F.col(0), F.col(1),
     F.col(1), F.col(2),
@@ -1174,25 +1205,26 @@ void draw_quad_mesh(const Eigen::MatrixXd& V, Eigen::MatrixXi& F)
   viewer.launch();
 }
 
-
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
-  const std::string MESHES_DIR = 
+  const std::string MESHES_DIR =
     "F:\\Users\\Nicolas\\Desktop\\TESI\\Quadrilateral extension to libigl\\libigl\\tutorial\\102_DrawMesh\\";
-  
+
   Eigen::MatrixXd V;
   Eigen::MatrixXi F;
 
   // Load a mesh
-  //igl::readOFF(MESHES_DIR + "edge_rotate_doublet.off", V, F);
+  //igl::readOFF(MESHES_DIR + "quad_surface.off", V, F);
   igl::readOBJ(MESHES_DIR + "quad_cubespikes.obj", V, F);
-  
-  if (start_simplification(V, F, 300)) 
+
+  std::cout << "Quad mesh coarsening in progress...\n\n";
+  if (start_simplification(V, F, 300))
   {
+    std::cout << "Quad mesh drawing in progress...\n\n";
     draw_quad_mesh(V, F);
   }
   else
   {
-    std::cout << "\n\n" << "ERROR occured during quad mesh simplification" << "\n\n";
+    std::cout << "\n\n" << "ERROR occured during quad mesh simplification\n\n";
   }
 }
