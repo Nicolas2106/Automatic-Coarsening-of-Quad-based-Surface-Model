@@ -53,16 +53,6 @@ typedef struct {
   }
 } MinHeapCompare;
 
-std::vector<Edge> find_edges(Eigen::RowVector4i face)
-{
-  std::vector<Edge> eds;
-  for (int i = 0; i < 4; ++i)
-  {
-    eds.push_back(Edge{ face[i], face[(i + 1) % 4] });
-  }
-  return eds;
-}
-
 Eigen::RowVector3d new_vertex_pos(Eigen::MatrixXd& V, std::vector<int> vertices, 
   std::vector<int> faceVertices)
 {
@@ -82,8 +72,7 @@ Eigen::RowVector3d new_vertex_pos(Eigen::MatrixXd& V, std::vector<int> vertices,
     V.row(faceVertices[3]);
   igl::fit_plane(v, normal, pointOnPlane);
   
-  Eigen::RowVector3d vec = centroid - pointOnPlane;
-  double proj = vec.dot(normal);
+  double proj = (centroid - pointOnPlane).dot(normal);
   return centroid - (proj * normal);
 }
 
@@ -728,8 +717,10 @@ bool optimize_quad_mesh(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
   /* Edge rotation */
   for (Edge edge : involvedEdges)
   {
-    bool success = try_edge_rotation(edge, V, F, halfEdges, edges, diagonals);
-    if (!success) return false;
+    if (!try_edge_rotation(edge, V, F, halfEdges, edges, diagonals))
+    {
+      return false;
+    }
   }
 
   /* Vertex rotation */
@@ -978,62 +969,61 @@ bool coarsen_quad_mesh(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
   
   // Search for the shortest edge
   Edge shortestEdge = *edges.begin();
+  double currEdgeLength, shortestEdgeLength = 
+    squared_distance(vertices[shortestEdge[0]], vertices[shortestEdge[1]]);
   for (Edge e : edges)
   {
-    if (squared_distance(vertices[e[0]], vertices[e[1]]) <
-      squared_distance(vertices[shortestEdge[0]], vertices[shortestEdge[1]]))
+    currEdgeLength = squared_distance(vertices[e[0]], vertices[e[1]]);
+    if (currEdgeLength < shortestEdgeLength)
     {
+      shortestEdgeLength = currEdgeLength;
       shortestEdge = e;
     }
   }
 
   // Search for the shortest diagonal
-  int min = 0;
-  std::pair<int, int> currDiag, currMinDiag;
-  size = diagonals.size();
-  for (int i = 0; i < size; ++i)
+  std::pair<int, int> shortestDiag = diagonals[0];
+  double currDiagonalLength, shortestDiagonalLength =
+    squared_distance(vertices[shortestDiag.first], vertices[shortestDiag.second]);
+  for (std::pair<int, int> d : diagonals)
   {
-    currDiag = diagonals[i];
-    currMinDiag = diagonals[min];
-    if (squared_distance(vertices[currDiag.first], vertices[currDiag.second]) <
-      squared_distance(vertices[currMinDiag.first], vertices[currMinDiag.second]))
+    currDiagonalLength = squared_distance(vertices[d.first], vertices[d.second]);
+    if (currDiagonalLength < shortestDiagonalLength)
     {
-      min = i;
+      shortestDiagonalLength = currDiagonalLength;
+      shortestDiag = d;
     }
   }
-  std::pair<int, int> shortestDiagonal = diagonals[min];
-
-  double shortestEdgeLength = squared_distance(vertices[shortestEdge[0]], 
-    vertices[shortestEdge[1]]);
-  
-  double shortestDiagonalLength = squared_distance(vertices[shortestDiagonal.first],
-    vertices[shortestDiagonal.second]);
 
   int vertexMantained, vertexRemoved;
-  double sqrt2 = sqrt(2);
-  if (shortestDiagonalLength / (sqrt2 * sqrt2) < shortestEdgeLength)
+  if (shortestDiagonalLength < shortestEdgeLength * 2)
   {
     /* Diagonal collapse */
-    vertexMantained = shortestDiagonal.second;
-    vertexRemoved = shortestDiagonal.first;
-    bool success = diagonal_collapse(V, F, halfEdges, edges, diagonals, 
-      vertexMantained, vertexRemoved);
-    if (!success) return false;
+    vertexMantained = shortestDiag.second;
+    vertexRemoved = shortestDiag.first;
+    if (!diagonal_collapse(V, F, halfEdges, edges, diagonals, vertexMantained, vertexRemoved))
+    {
+      return false;
+    }
   }
   else
   {
     /* Edge collapse */
     vertexMantained = shortestEdge[1];
     vertexRemoved = shortestEdge[0];
-    bool success = edge_collapse(V, F, halfEdges, edges, diagonals,
-      vertexMantained, vertexRemoved);
-    if (!success) return false;
+    if (!edge_collapse(V, F, halfEdges, edges, diagonals, vertexMantained, vertexRemoved))
+    {
+      return false;
+    }
   }
 
   // Final local optimization
-  int v = vertexMantained > vertexRemoved ? vertexMantained - 1 : vertexMantained;
-  optimize_quad_mesh(V, F, halfEdges, edges, diagonals,
-    edges_from_vertex(v, halfEdges), { v });
+  if (vertexMantained > vertexRemoved) { --vertexMantained; }
+  if (!optimize_quad_mesh(V, F, halfEdges, edges, diagonals, 
+    edges_from_vertex(vertexMantained, halfEdges), { vertexMantained }))
+  {
+    return false;
+  }
 
   return true;
 }
@@ -1057,7 +1047,12 @@ bool start_simplification(Eigen::MatrixXd& V, Eigen::MatrixXi& F, int finalNumbe
     diagonals.push_back(std::make_pair(face[0], face[2]));
     diagonals.push_back(std::make_pair(face[1], face[3]));
 
-    std::vector<Edge> faceEdges = find_edges(face);
+    std::vector<Edge> faceEdges = {
+      Edge{ face[0], face[1] },
+      Edge{ face[1], face[2] },
+      Edge{ face[2], face[3] },
+      Edge{ face[3], face[0] }
+    };
     
     // Retrieve edges and compute four half-edges per face
     int hesSize = halfEdges.size();
@@ -1219,7 +1214,7 @@ int main(int argc, char* argv[])
 
   std::cout << "Quad mesh coarsening in progress...\n\n";
   auto start_time = std::chrono::high_resolution_clock::now(); // TODO delete
-  if (start_simplification(V, F, 1000))
+  if (start_simplification(V, F, 300))
   {
     auto end_time = std::chrono::high_resolution_clock::now(); // TODO delete
     std::cout << "\n" << (end_time - start_time) / std::chrono::milliseconds(1) << " milliseconds\n\n"; // TODO delete
