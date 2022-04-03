@@ -100,19 +100,6 @@ std::pair<int, int> half_edges_from_edge(std::vector<HalfEdge> halfEdges, Edge e
   return std::make_pair(firstHe, secondHe);
 }
 
-std::vector<Edge> edges_from_vertex(int vertex, std::vector<HalfEdge> halfEdges)
-{
-  std::vector<Edge> edges;
-  for (HalfEdge e : halfEdges)
-  {
-    if (e.vertex == vertex)
-    {
-      edges.push_back(Edge{ e.vertex, halfEdges[e.next].vertex });
-    }
-  }
-  return edges;
-}
-
 std::vector<int> half_edges_from_vertex(int vertex, std::vector<HalfEdge> halfEdges)
 {
   std::vector<int> hes, hesTmp;
@@ -1019,8 +1006,16 @@ bool coarsen_quad_mesh(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
 
   // Final local optimization
   if (vertexMantained > vertexRemoved) { --vertexMantained; }
+  std::vector<Edge> edgesFromVertex;
+  for (HalfEdge e : halfEdges)
+  {
+    if (e.vertex == vertexMantained)
+    {
+      edgesFromVertex.push_back(Edge{ e.vertex, halfEdges[e.next].vertex });
+    }
+  }
   if (!optimize_quad_mesh(V, F, halfEdges, edges, diagonals, 
-    edges_from_vertex(vertexMantained, halfEdges), { vertexMantained }))
+    edgesFromVertex, { vertexMantained }))
   {
     return false;
   }
