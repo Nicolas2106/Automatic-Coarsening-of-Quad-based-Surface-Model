@@ -14,18 +14,19 @@ struct HalfEdge {
   int next; // Index of the next half-edge
 };
 
-typedef Eigen::RowVector2i Edge;
+typedef std::pair<int, int> Edge;
 
 bool operator==(const Edge e1, const Edge e2)
 {
-  int e10 = e1[0], e11 = e1[1], e20 = e2[0];
-  return e10 == e20 ? e11 == e2[1] : (e11 == e20 ? e10 == e2[1] : false);
+  int e10 = e1.first, e11 = e1.second, e20 = e2.first;
+  return e10 == e20 ? e11 == e2.second : (e11 == e20 ? e10 == e2.second : false);
 }
 
 struct compareTwoEdges {
   bool operator()(Edge e1, Edge e2) const {
-    int min1 = std::min(e1[0], e1[1]), min2 = std::min(e2[0], e2[1]);
-    return min1 == min2 ? std::max(e1[0], e1[1]) < std::max(e2[0], e2[1]) : min1 < min2;
+    int min1 = std::min(e1.first, e1.second), min2 = std::min(e2.first, e2.second);
+    return min1 == min2 ? 
+      std::max(e1.first, e1.second) < std::max(e2.first, e2.second) : min1 < min2;
   }
 };
 
@@ -39,17 +40,10 @@ double squared_distance(Eigen::RowVector3d point1, Eigen::RowVector3d point2)
 
 typedef struct {
   Eigen::MatrixXd V;
-  
-  // For diagonals
+
   bool operator()(const std::pair<int, int> d1, const std::pair<int, int> d2) const {
     return squared_distance(V.row(d1.first), V.row(d1.second)) >
       squared_distance(V.row(d2.first), V.row(d2.second));
-  }
-
-  // For edges
-  bool operator()(const Edge e1, const Edge e2) const {
-    return squared_distance(V.row(e1[0]), V.row(e1[1])) >
-      squared_distance(V.row(e2[0]), V.row(e2[1]));
   }
 } MinHeapCompare;
 
@@ -78,7 +72,7 @@ Eigen::RowVector3d new_vertex_pos(Eigen::MatrixXd& V, std::vector<int> vertices,
 
 std::pair<int, int> half_edges_from_edge(std::vector<HalfEdge> halfEdges, Edge edge)
 {
-  int v1 = edge[0], v2 = edge[1];
+  int v1 = edge.first, v2 = edge.second;
   int firstHe = -1, secondHe = -1;
 
   for (int i = 0; i < halfEdges.size(); ++i)
@@ -209,8 +203,8 @@ void remove_vertex(Eigen::MatrixXd& V, int rowIndex,
   std::vector<Edge> es(edges.begin(), edges.end());
   for (Edge& e : es)
   {
-    if (e[0] > rowIndex) { --e[0]; }
-    if (e[1] > rowIndex) { --e[1]; }
+    if (e.first > rowIndex) { --e.first; }
+    if (e.second > rowIndex) { --e.second; }
   }
   std::set<Edge, compareTwoEdges> newSet(es.begin(), es.end());
   std::swap(edges, newSet);
@@ -750,7 +744,7 @@ bool diagonal_collapse(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
       break;
     }
   }
-  if (edge[0] == -1) return false;
+  if (edge.first == -1) return false;
 
   int initialHe, initialHeOpposite, finalHe, finalHeOpposite = -1;
   std::pair<int, int> initial = half_edges_from_edge(halfEdges, edge);
@@ -957,10 +951,10 @@ bool coarsen_quad_mesh(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
   // Search for the shortest edge
   Edge shortestEdge = *edges.begin();
   double currEdgeLength, shortestEdgeLength = 
-    squared_distance(vertices[shortestEdge[0]], vertices[shortestEdge[1]]);
+    squared_distance(vertices[shortestEdge.first], vertices[shortestEdge.second]);
   for (Edge e : edges)
   {
-    currEdgeLength = squared_distance(vertices[e[0]], vertices[e[1]]);
+    currEdgeLength = squared_distance(vertices[e.first], vertices[e.second]);
     if (currEdgeLength < shortestEdgeLength)
     {
       shortestEdgeLength = currEdgeLength;
@@ -996,8 +990,8 @@ bool coarsen_quad_mesh(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
   else
   {
     /* Edge collapse */
-    vertexMantained = shortestEdge[1];
-    vertexRemoved = shortestEdge[0];
+    vertexMantained = shortestEdge.second;
+    vertexRemoved = shortestEdge.first;
     if (!edge_collapse(V, F, halfEdges, edges, diagonals, vertexMantained, vertexRemoved))
     {
       return false;
