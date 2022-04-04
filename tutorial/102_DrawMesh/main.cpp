@@ -123,6 +123,25 @@ std::vector<int> half_edges_from_vertex(int vertex, std::vector<HalfEdge> halfEd
   return hes;
 }
 
+// Check if the vertex valence is equal to two (= there is a doublet)
+bool is_doublet(int vertex, std::vector<HalfEdge> halfEdges)
+{
+  int vertexValence = 0;
+  for (HalfEdge he : halfEdges)
+  {
+    if (he.vertex == vertex) 
+    { 
+      if (vertexValence == 2)
+      {
+        return false;
+      }
+      ++vertexValence; 
+    }
+  }
+
+  return vertexValence == 2;
+}
+
 void remove_face(Eigen::MatrixXi& F, int rowIndex, std::vector<HalfEdge>& halfEdges,
   std::vector<std::pair<int, int>>& diagonals)
 {
@@ -239,6 +258,10 @@ void remove_half_edges(std::vector<int> hesToBeRemoved, std::vector<HalfEdge>& h
   }
 }
 
+void searching_for_doublets(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
+  std::vector<HalfEdge>& halfEdges, std::set<Edge, compareTwoEdges>& edges,
+  std::vector<std::pair<int, int>>& diagonals);
+
 void remove_doublet(Eigen::MatrixXd& V, Eigen::MatrixXi& F, 
   int startingHalfEdge, std::vector<HalfEdge>& halfEdges, 
   std::set<Edge, compareTwoEdges>& edges, std::vector<std::pair<int, int>>& diagonals)
@@ -254,12 +277,16 @@ void remove_doublet(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
       break;
     }
   }
-  assert(otherStartingHalfEdge != -1 && "An error occured a doublet removal.");
+  assert(otherStartingHalfEdge != -1 && "An error occured during a doublet removal.");
   
   int next1 = halfEdges[startingHalfEdge].next;
   int first2 = halfEdges[next1].next;
   int next2 = halfEdges[otherStartingHalfEdge].next;
   int first1 = halfEdges[next2].next;
+
+  // These two endpoints will be used to check for the creation of other doublets
+  int end1 = halfEdges[next1].vertex;
+  int end2 = halfEdges[next2].vertex;
 
   int secondHe = halfEdges[first1].next;
   int fouthHe = halfEdges[first2].next;
@@ -292,6 +319,70 @@ void remove_doublet(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
 
   remove_vertex(V, vertexToBeDeleted, F, halfEdges, edges, diagonals, 
     vertexToBeMantained);
+
+  // Check if other doublets are created in cascade at the two endpoints
+  if (end1 > vertexToBeDeleted) { --end1;  }
+  if (end2 > vertexToBeDeleted) { --end2;  }
+  double doublet1 = is_doublet(end1, halfEdges);
+  double doublet2 = is_doublet(end2, halfEdges);
+  if (doublet1 && doublet2)
+  {
+    searching_for_doublets(V, F, halfEdges, edges, diagonals);
+  }
+  else if (doublet1)
+  {
+    int startingHe = -1;
+    for (int i = 0; i < halfEdges.size(); ++i)
+    {
+      if (halfEdges[i].vertex == end1)
+      {
+        startingHe = i;
+        break;
+      }
+    }
+    if (startingHe == -1) { return; }
+    remove_doublet(V, F, startingHe, halfEdges, edges, diagonals);
+  }
+  else if (doublet2)
+  {
+    int startingHe = -1;
+    for (int i = 0; i < halfEdges.size(); ++i)
+    {
+      if (halfEdges[i].vertex == end2)
+      {
+        startingHe = i;
+        break;
+      }
+    }
+    if (startingHe == -1) { return; }
+    remove_doublet(V, F, startingHe, halfEdges, edges, diagonals);
+  }
+}
+
+// Search for doublets in the whole quad mesh, recursively removing them
+void searching_for_doublets(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
+  std::vector<HalfEdge>& halfEdges, std::set<Edge, compareTwoEdges>& edges,
+  std::vector<std::pair<int, int>>& diagonals)
+{
+  int numberOfVertices = V.rows();
+  for (int i = 0; i < numberOfVertices; ++i)
+  {
+    if (is_doublet(i, halfEdges))
+    {
+      int startingHe = -1;
+      for (int j = 0; j < halfEdges.size(); ++j)
+      {
+        if (halfEdges[j].vertex == i)
+        {
+          startingHe = j;
+        }
+      }
+      if (startingHe == -1) { continue; }
+      remove_doublet(V, F, startingHe, halfEdges, edges, diagonals);
+      searching_for_doublets(V, F, halfEdges, edges, diagonals);
+      return;
+    }
+  }
 }
 
 bool try_edge_rotation(Edge edge, Eigen::MatrixXd& V, Eigen::MatrixXi& F,
@@ -459,13 +550,8 @@ bool try_edge_rotation(Edge edge, Eigen::MatrixXd& V, Eigen::MatrixXi& F,
   if (rotation)
   {
     // Searching for the two possible doublets created after the rotation
-    int countEdges = 0, size = halfEdges.size();
     int vert = halfEdges[firstDoubletHe].vertex;
-    for (int i = 0; i < size; ++i)
-    {
-      if (halfEdges[i].vertex == vert) ++countEdges;
-    }
-    if (countEdges == 2)
+    if (is_doublet(vert, halfEdges))
     {
       // First doublet found
       if (secondDoubletCheck.first > vert) --secondDoubletCheck.first;
@@ -478,15 +564,8 @@ bool try_edge_rotation(Edge edge, Eigen::MatrixXd& V, Eigen::MatrixXi& F,
       Edge{ secondDoubletCheck.first, secondDoubletCheck.second });
     int secondDoubletHe = halfEdges[doubletHes.first].vertex == 
       secondDoubletCheck.first ? doubletHes.first : doubletHes.second;
-    
-    vert = halfEdges[secondDoubletHe].vertex;
-    countEdges = 0;
-    size = halfEdges.size();
-    for (int i = 0; i < size; ++i)
-    {
-      if (halfEdges[i].vertex == vert) ++countEdges;
-    }
-    if (countEdges == 2)
+
+    if (is_doublet(halfEdges[secondDoubletHe].vertex, halfEdges))
     {
       // Second doublet found
       remove_doublet(V, F, secondDoubletHe, halfEdges, edges, diagonals);
@@ -643,12 +722,7 @@ std::pair<bool, std::vector<int>> try_vertex_rotation(int vert,
     {
       HalfEdge heTmp = halfEdges[halfEdges[halfEdges[he].next].next];
       int startingHeVertex = heTmp.vertex;
-      int countEdges = 0, size = halfEdges.size();
-      for (int i = 0; i < size; ++i)
-      {
-        if (halfEdges[i].vertex == startingHeVertex) ++countEdges;
-      }
-      if (countEdges == 2)
+      if (is_doublet(startingHeVertex, halfEdges))
       {
         // Doublet found
         result.second.push_back(startingHeVertex);
@@ -695,7 +769,7 @@ bool optimize_quad_mesh(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
   std::vector<std::pair<int, int>>& diagonals, 
   std::vector<Edge> involvedEdges, std::vector<int> involvedVertices)
 {
-  /* Edge rotation */
+  // Edge rotation
   for (Edge edge : involvedEdges)
   {
     if (!try_edge_rotation(edge, V, F, halfEdges, edges, diagonals))
@@ -704,7 +778,7 @@ bool optimize_quad_mesh(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
     }
   }
 
-  /* Vertex rotation */
+  // Vertex rotation
   for (int vert : involvedVertices)
   {
     try_vertex_rotation(vert, V, F, halfEdges, edges, diagonals, false);
@@ -727,6 +801,7 @@ bool diagonal_collapse(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
     {
       faceIndex = he.face;
       face = F.row(faceIndex);
+      break;
     }
   }
   if (faceIndex == -1)
@@ -866,20 +941,9 @@ bool diagonal_collapse(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
   std::pair<int, int> p2 = half_edges_from_edge(halfEdges, Edge{ v0Cleaned, v2Cleaned });
   int startingHe1 = halfEdges[p1.first].vertex == v1Cleaned ? p1.first : p1.second;
   int startingHe2 = halfEdges[p2.first].vertex == v2Cleaned ? p2.first : p2.second;
-
-  int countEdges1 = 0, countEdges2 = 0;
-  int vert1 = halfEdges[startingHe1].vertex,
-    vert2 = halfEdges[startingHe2].vertex;
-  size = halfEdges.size();
-  for (int i = 0; i < size; ++i)
-  {
-    int v = halfEdges[i].vertex;
-
-    if (v == vert1) ++countEdges1;
-    else if (v == vert2) ++countEdges2;
-  }
  
-  bool doublet1 = (countEdges1 == 2), doublet2 = (countEdges2 == 2);
+  bool doublet1 = is_doublet(halfEdges[startingHe1].vertex, halfEdges);
+  bool doublet2 = is_doublet(halfEdges[startingHe2].vertex, halfEdges);
 
   if (doublet1 && doublet2)
   {
@@ -1069,9 +1133,11 @@ bool start_simplification(Eigen::MatrixXd& V, Eigen::MatrixXi& F, int finalNumbe
 
   while (F.rows() > finalNumberOfFaces)
   { 
-    bool success = coarsen_quad_mesh(V, F, halfEdges, edges, diagonals);
+    if (!coarsen_quad_mesh(V, F, halfEdges, edges, diagonals))
+    {
+      return false;
+    }
     std::cout << F.rows() << "\n"; // // TODO delete
-    if (!success) return false;
   }
 
   return true;
