@@ -70,6 +70,8 @@ Eigen::RowVector3d new_vertex_pos(Eigen::MatrixXd& V, std::vector<int> vertices,
   return centroid - (proj * normal);
 }
 
+std::vector<int> verticesRemovedTmp;
+
 std::pair<int, int> half_edges_from_edge(std::vector<HalfEdge> halfEdges, Edge edge)
 {
   int v1 = edge.first, v2 = edge.second;
@@ -199,6 +201,7 @@ void remove_vertex(Eigen::MatrixXd& V, int rowIndex,
   newV << V.topRows(rowIndex), V.bottomRows(size - rowIndex);
   V.conservativeResize(size, Eigen::NoChange);
   V = newV;
+  verticesRemovedTmp.push_back(rowIndex);
 
   // Modify the vertices' indices inside the matrix F
   size = F.rows();
@@ -947,15 +950,8 @@ bool diagonal_collapse(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
 
   if (doublet1 && doublet2)
   {
-    // Remove first doublet
     remove_doublet(V, F, startingHe1, halfEdges, edges, diagonals);
-
-    // Remove second doublet
-    int vertToBeCleaned = v2Cleaned > v1Cleaned ? v2Cleaned - 1 : v2Cleaned;
-    p2 = half_edges_from_edge(halfEdges, Edge{ v0Cleaned > v1Cleaned ?
-      v0Cleaned - 1 : v0Cleaned, vertToBeCleaned });
-    startingHe2 = halfEdges[p2.first].vertex == vertToBeCleaned ? p2.first : p2.second;
-    remove_doublet(V, F, startingHe2, halfEdges, edges, diagonals);
+    searching_for_doublets(V, F, halfEdges, edges, diagonals);
   }
   else if (doublet1)
   {
@@ -1040,10 +1036,11 @@ bool coarsen_quad_mesh(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
     }
   }
 
+  // Quad mesh coarsening
   int vertexMantained, vertexRemoved;
   if (shortestDiagonalLength < shortestEdgeLength * 2)
   {
-    /* Diagonal collapse */
+    // Diagonal collapse
     vertexMantained = shortestDiag.second;
     vertexRemoved = shortestDiag.first;
     if (!diagonal_collapse(V, F, halfEdges, edges, diagonals, vertexMantained, vertexRemoved))
@@ -1053,7 +1050,7 @@ bool coarsen_quad_mesh(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
   }
   else
   {
-    /* Edge collapse */
+    // Edge collapse
     vertexMantained = shortestEdge.second;
     vertexRemoved = shortestEdge.first;
     if (!edge_collapse(V, F, halfEdges, edges, diagonals, vertexMantained, vertexRemoved))
@@ -1063,19 +1060,27 @@ bool coarsen_quad_mesh(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
   }
 
   // Final local optimization
-  if (vertexMantained > vertexRemoved) { --vertexMantained; }
-  std::vector<Edge> edgesFromVertex;
-  for (HalfEdge e : halfEdges)
+  for (int vert : verticesRemovedTmp)
   {
-    if (e.vertex == vertexMantained)
-    {
-      edgesFromVertex.push_back(Edge{ e.vertex, halfEdges[e.next].vertex });
-    }
+    if (vertexMantained > vert) { --vertexMantained; }
   }
-  if (!optimize_quad_mesh(V, F, halfEdges, edges, diagonals, 
-    edgesFromVertex, { vertexMantained }))
+  verticesRemovedTmp.clear();
+  
+  if (vertexMantained < V.rows())
   {
-    return false;
+    std::vector<Edge> edgesFromVertex;
+    for (HalfEdge e : halfEdges)
+    {
+      if (e.vertex == vertexMantained)
+      {
+        edgesFromVertex.push_back(Edge{ e.vertex, halfEdges[e.next].vertex });
+      }
+    }
+    if (!optimize_quad_mesh(V, F, halfEdges, edges, diagonals,
+      edgesFromVertex, { vertexMantained }))
+    {
+      return false;
+    }
   }
 
   return true;
