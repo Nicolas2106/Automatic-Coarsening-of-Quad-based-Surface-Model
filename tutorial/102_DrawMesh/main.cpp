@@ -269,6 +269,8 @@ void remove_doublet(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
   int startingHalfEdge, std::vector<HalfEdge>& halfEdges, 
   std::set<Edge, compareTwoEdges>& edges, std::vector<std::pair<int, int>>& diagonals)
 {
+  if (F.rows() <= 3) { return; } // Too few faces to remove doublets
+  
   int vertexToBeDeleted = halfEdges[startingHalfEdge].vertex;
   int otherStartingHalfEdge = -1;
   int size = halfEdges.size();
@@ -1138,6 +1140,8 @@ bool start_simplification(Eigen::MatrixXd& V, Eigen::MatrixXi& F, int finalNumbe
 
   while (F.rows() > finalNumberOfFaces)
   { 
+    if (F.rows() <= 15) { return true; } // Too few faces to continue the simplification
+    
     if (!coarsen_quad_mesh(V, F, halfEdges, edges, diagonals))
     {
       return false;
