@@ -24,12 +24,11 @@ struct compareTwoEdges {
   }
 };
 
-double squared_distance(Eigen::MatrixXd V, int vertex1, int vertex2)
+double squared_distance(Eigen::RowVector3d vertex1, Eigen::RowVector3d vertex2)
 {
-  Eigen::RowVector3d point1 = V.row(vertex1), point2 = V.row(vertex2);;
-  double deltaX = point1[0] - point2[0],
-    deltaY = point1[1] - point2[1],
-    deltaZ = point1[2] - point2[2];
+  double deltaX = vertex1[0] - vertex2[0],
+    deltaY = vertex1[1] - vertex2[1],
+    deltaZ = vertex1[2] - vertex2[2];
   return deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ;
 }
 
@@ -278,16 +277,20 @@ bool try_edge_rotation(Edge edge, Eigen::MatrixXd& V, std::vector<bool>& tombSto
   if (oppositeNextVertF1 == -1 || oppositeNextVertF2 == -1) { return false; }
 
   // Edge rotation is profitable if it shortens the rotated edge and both the diagonals
-  double oldEdgeLength = squared_distance(V, edge.first, edge.second),
-    oldDiag1F1Length = squared_distance(V, edge.first, oppositeVertF1),
-    oldDiag2F1Length = squared_distance(V, oppositeNextVertF1, edge.second),
-    oldDiag1F2Length = squared_distance(V, edge.first, oppositeNextVertF2),
-    oldDiag2F2Length = squared_distance(V, oppositeVertF2, edge.second);
+  Eigen::RowVector3d edgeFirst = V.row(edge.first), edgeSecond = V.row(edge.second), 
+    oppVertF1 = V.row(oppositeVertF1), oppVertF2 = V.row(oppositeVertF2), 
+    oppNextVertF1 = V.row(oppositeNextVertF1), oppNextVertF2 = V.row(oppositeNextVertF2);
 
-  double edgeClockLength = squared_distance(V, oppositeNextVertF1, oppositeNextVertF2),
-    edgeCounterLength = squared_distance(V, oppositeVertF1, oppositeVertF2),
-    newDiag1Length = squared_distance(V, oppositeVertF1, oppositeNextVertF2),
-    newDiag2Length = squared_distance(V, oppositeNextVertF1, oppositeVertF2);
+  double oldEdgeLength = squared_distance(edgeFirst, edgeSecond),
+    oldDiag1F1Length = squared_distance(edgeFirst, oppVertF1),
+    oldDiag2F1Length = squared_distance(oppNextVertF1, edgeSecond),
+    oldDiag1F2Length = squared_distance(edgeFirst, oppNextVertF2),
+    oldDiag2F2Length = squared_distance(oppVertF2, edgeSecond);
+
+  double edgeClockLength = squared_distance(oppNextVertF1, oppNextVertF2),
+    edgeCounterLength = squared_distance(oppVertF1, oppVertF2),
+    newDiag1Length = squared_distance(oppVertF1, oppNextVertF2),
+    newDiag2Length = squared_distance(oppNextVertF1, oppVertF2);
 
   bool rotation = false; // True if the edge rotation happens
 
@@ -387,6 +390,7 @@ bool try_vertex_rotation(int rotationVert, Eigen::MatrixXd& V, std::vector<bool>
 
   if (!forceRotation)
   {
+    Eigen::RowVector3d rotVert = V.row(rotationVert);
     for (int face : adt[rotationVert])
     {
       if (tombStonesF[face])
@@ -396,8 +400,8 @@ bool try_vertex_rotation(int rotationVert, Eigen::MatrixXd& V, std::vector<bool>
         {
           if (f[i] == rotationVert)
           {
-            edgesSum += squared_distance(V, rotationVert, f[(i + 1) % 4]);
-            diagonalsSum += squared_distance(V, rotationVert, f[(i + 2) % 4]);
+            edgesSum += squared_distance(rotVert, V.row(f[(i + 1) % 4]));
+            diagonalsSum += squared_distance(rotVert, V.row(f[(i + 2) % 4]));
           }
         }
       }
@@ -668,20 +672,20 @@ bool coarsen_quad_mesh(Eigen::MatrixXd& V, std::vector<bool>& tombStonesV,
   std::vector<std::vector<int>>& adt, std::set<Edge, compareTwoEdges>& edges, 
   std::set<Edge, compareTwoEdges>& diagonals)
 {
-  std::vector<int> vertices;
+  std::vector<Eigen::RowVector3d> vertices;
   int verticesCount = V.rows();
   for (int i = 0; i < verticesCount; ++i)
   {
-    vertices.push_back(i); // TODO Try to set a size to 'vertices' above, and change this line accordingly
+    vertices.push_back(V.row(i));
   }
   
   // Search for the shortest edge
   Edge shortestEdge = *edges.begin();
   double currEdgeLength, shortestEdgeLength = 
-    squared_distance(V, vertices[shortestEdge.first], vertices[shortestEdge.second]);
+    squared_distance(vertices[shortestEdge.first], vertices[shortestEdge.second]);
   for (Edge e : edges)
   {
-    currEdgeLength = squared_distance(V, vertices[e.first], vertices[e.second]);
+    currEdgeLength = squared_distance(vertices[e.first], vertices[e.second]);
     if (currEdgeLength < shortestEdgeLength)
     {
       shortestEdgeLength = currEdgeLength;
@@ -692,10 +696,10 @@ bool coarsen_quad_mesh(Eigen::MatrixXd& V, std::vector<bool>& tombStonesV,
   // Search for the shortest diagonal
   std::pair<int, int> shortestDiag = *diagonals.begin();
   double currDiagonalLength, shortestDiagonalLength =
-    squared_distance(V, vertices[shortestDiag.first], vertices[shortestDiag.second]);
+    squared_distance(vertices[shortestDiag.first], vertices[shortestDiag.second]);
   for (std::pair<int, int> d : diagonals)
   {
-    currDiagonalLength = squared_distance(V, vertices[d.first], vertices[d.second]);
+    currDiagonalLength = squared_distance(vertices[d.first], vertices[d.second]);
     if (currDiagonalLength < shortestDiagonalLength)
     {
       shortestDiagonalLength = currDiagonalLength;
