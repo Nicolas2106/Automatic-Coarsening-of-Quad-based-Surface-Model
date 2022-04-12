@@ -10,11 +10,11 @@
 
 typedef std::pair<int, int> Edge;
 
-bool operator==(const Edge e1, const Edge e2)
+/*bool operator==(const Edge e1, const Edge e2)
 {
   int e10 = e1.first, e11 = e1.second, e20 = e2.first;
   return e10 == e20 ? e11 == e2.second : (e11 == e20 ? e10 == e2.second : false);
-}
+}*/
 
 struct compareTwoEdges {
   bool operator()(Edge e1, Edge e2) const {
@@ -773,7 +773,8 @@ bool start_simplification(Eigen::MatrixXd& V, Eigen::MatrixXi& F, int finalNumbe
   int minimumNumberOfFaces = 15;
   if (finalNumberOfFaces < minimumNumberOfFaces)
   {
-    std::cout << "Minimun number of faces (" << minimumNumberOfFaces << ") reached.\n";
+    std::cout << "The minimun number of faces is " << minimumNumberOfFaces << 
+      ". Use a larger number please.\n";
     return true;
   }
   
