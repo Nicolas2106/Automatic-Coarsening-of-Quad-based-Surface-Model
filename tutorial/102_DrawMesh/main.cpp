@@ -14,18 +14,18 @@ struct Segment
   int v1, v2; // The two vertices at the ends of the segment
   double length;
   bool isDiagonal; // True if the segment is a diagonal, false if it's an edge
+  
+  bool operator==(const Segment s2) const
+  {
+    return length == s2.length && isDiagonal == s2.isDiagonal &&
+      std::min(v1, v2) == std::min(s2.v1, s2.v2) &&
+      std::max(v1, v2) == std::max(s2.v1, s2.v2);
+  }
 };
-
-bool operator==(Segment s1, Segment s2) // TODO Move this func inside the struct
-{
-  return s1.length == s2.length && s1.isDiagonal == s2.isDiagonal &&
-    std::min(s1.v1, s1.v2) == std::min(s2.v1, s2.v2) &&
-    std::max(s1.v1, s1.v2) == std::max(s2.v1, s2.v2);
-}
 
 struct CompareTwoSegments
 {
-  bool operator()(Segment s1, Segment s2) const 
+  bool operator()(const Segment s1, const Segment s2) const 
   { 
     if (s1.length == s2.length)
     {
@@ -61,8 +61,8 @@ Eigen::RowVector3d new_vertex_pos(Eigen::MatrixXd V, Eigen::MatrixXi& F,
       {
         if (f[i] == oldVert)
         {
-          verticesForCentroid.push_back(f[(i + 1) % 4]); // Next vertex
-          verticesForCentroid.push_back(f[(i + 2) % 4]); // Opposite vertex
+          verticesForCentroid.emplace_back(f[(i + 1) % 4]); // Next vertex
+          verticesForCentroid.emplace_back(f[(i + 2) % 4]); // Opposite vertex
         }
       }
     }
@@ -113,7 +113,7 @@ int adjacent_face(int face, int vert1, int vert2,
 
 void remove_doublet(int vertexToBeRemoved, Eigen::MatrixXd& V, 
   std::vector<bool>& tombStonesV, Eigen::MatrixXi& F, 
-  std::vector<bool>& tombStonesF, std::vector<std::vector<int>>& adt,  
+  std::vector<bool>& tombStonesF, int& aliveFaces, std::vector<std::vector<int>>& adt,
   std::priority_queue<Segment, std::vector<Segment>, CompareTwoSegments>& operations,
   std::priority_queue<Segment, std::vector<Segment>, CompareTwoSegments>& delOperations)
 {
@@ -136,12 +136,7 @@ void remove_doublet(int vertexToBeRemoved, Eigen::MatrixXd& V,
   if (adtSize != 2) { return; } // Incorrect input (No doublet)
   if (faceToBeRemoved == -1 || faceToBeMaintained == -1) { return; }
   
-  int facesRemained = 0;
-  for (bool t : tombStonesF) // TODO save the number of alive faces instead to search linearly
-  {
-    if (t) { ++facesRemained; }
-  }
-  if (facesRemained < 4) { return; } // Too few faces to remove doublets
+  if (aliveFaces < 4) { return; } // Too few faces to remove doublets
 
   Eigen::RowVector4i f = F.row(faceToBeRemoved);
   int endVert1, oppositeVert, endVert2;
@@ -169,6 +164,7 @@ void remove_doublet(int vertexToBeRemoved, Eigen::MatrixXd& V,
   
   // Remove one of the two faces adjacent to the doublet
   tombStonesF[faceToBeRemoved] = false;
+  --aliveFaces;
 
   // Modify the remaining face and complete the update of the priority queue
   f = F.row(faceToBeMaintained);
@@ -192,11 +188,6 @@ void remove_doublet(int vertexToBeRemoved, Eigen::MatrixXd& V,
   // Add the new face (the face mantained) to adt
   adt[oppositeVert].emplace_back(faceToBeMaintained);
 
-  // Set a better position for the vertex remained
-  //Eigen::RowVector4i face = F.row(faceToBeRemoved);
-  //std::vector<int> faceVertices{ face[0], face[1], face[2], face[3] };
-  //V.row(oppositeVert) = new_vertex_pos(V, F, tombStonesF, adt, oppositeVert, faceVertices);
-
   // Remove the vertex at the center of the doublet
   tombStonesV[vertexToBeRemoved] = false;
 
@@ -208,7 +199,8 @@ void remove_doublet(int vertexToBeRemoved, Eigen::MatrixXd& V,
   } 
   if (v1Valence == 2) // Doublet found
   {
-    remove_doublet(endVert1, V, tombStonesV, F, tombStonesF, adt, operations, delOperations);
+    remove_doublet(endVert1, V, tombStonesV, F, tombStonesF, aliveFaces, adt, 
+      operations, delOperations);
   }
 
   for (int face : adt[endVert2])
@@ -217,7 +209,8 @@ void remove_doublet(int vertexToBeRemoved, Eigen::MatrixXd& V,
   }
   if (v2Valence == 2) // Doublet found
   {
-    remove_doublet(endVert2, V, tombStonesV, F, tombStonesF, adt, operations, delOperations);
+    remove_doublet(endVert2, V, tombStonesV, F, tombStonesF, aliveFaces, adt, 
+      operations, delOperations);
   }
 }
 /*
@@ -342,8 +335,8 @@ bool try_edge_rotation(Edge edge, Eigen::MatrixXd& V, std::vector<bool>& tombSto
       adt[edge.first].end(), face1), adt[edge.first].end());
     adt[edge.second].erase(std::remove(adt[edge.second].begin(), 
       adt[edge.second].end(), face2), adt[edge.second].end());
-    adt[oppositeNextVertF2].push_back(face1); // TODO emplace_back
-    adt[oppositeNextVertF1].push_back(face2);
+    adt[oppositeNextVertF2].emplace_back(face1);
+    adt[oppositeNextVertF1].emplace_back(face2);
   }
   else if (edgeCounterLength < oldEdgeLength &&
     newDiag1Length < oldDiag1F2Length &&
@@ -371,8 +364,8 @@ bool try_edge_rotation(Edge edge, Eigen::MatrixXd& V, std::vector<bool>& tombSto
       adt[edge.first].end(), face2), adt[edge.first].end());
     adt[edge.second].erase(std::remove(adt[edge.second].begin(),
       adt[edge.second].end(), face1), adt[edge.second].end());
-    adt[oppositeVertF2].push_back(face1); // TODO emplace_back
-    adt[oppositeVertF1].push_back(face2);
+    adt[oppositeVertF2].emplace_back(face1);
+    adt[oppositeVertF1].emplace_back(face2);
   }
   
   if (rotation)
@@ -404,7 +397,8 @@ bool try_edge_rotation(Edge edge, Eigen::MatrixXd& V, std::vector<bool>& tombSto
 }
 */
 bool try_vertex_rotation(int rotationVert, Eigen::MatrixXd& V, std::vector<bool>& tombStonesV,
-  Eigen::MatrixXi& F, std::vector<bool>& tombStonesF, std::vector<std::vector<int>>& adt,
+  Eigen::MatrixXi& F, std::vector<bool>& tombStonesF, int& aliveFaces,
+  std::vector<std::vector<int>>& adt,
   std::priority_queue<Segment, std::vector<Segment>, CompareTwoSegments>& operations,
   std::priority_queue<Segment, std::vector<Segment>, CompareTwoSegments>& delOperations,
   int vertForNextCollapse = -1)
@@ -427,7 +421,7 @@ bool try_vertex_rotation(int rotationVert, Eigen::MatrixXd& V, std::vector<bool>
         if (f[i] == rotationVert)
         {
           int nextVert = f[(i + 1) % 4], oppVert = f[(i + 2) % 4];
-          vertsForDoublets.push_back(nextVert);
+          vertsForDoublets.emplace_back(nextVert);
 
           double edgeLength = squared_distance(rawRotVert, V.row(nextVert));
           double diagLength = squared_distance(rawRotVert, V.row(oppVert));
@@ -438,8 +432,8 @@ bool try_vertex_rotation(int rotationVert, Eigen::MatrixXd& V, std::vector<bool>
             diagonalsSum += diagLength;
           }
 
-          segments.push_back(Edge{ rotationVert, nextVert, 2 * edgeLength, false });
-          segments.push_back(Diagonal{ rotationVert, oppVert, diagLength, true });
+          segments.emplace_back(Edge{ rotationVert, nextVert, 2 * edgeLength, false });
+          segments.emplace_back(Diagonal{ rotationVert, oppVert, diagLength, true });
         }
       }
     }
@@ -461,8 +455,8 @@ bool try_vertex_rotation(int rotationVert, Eigen::MatrixXd& V, std::vector<bool>
         {
           if (f[i] == rotationVert)
           {
-            vertsOnPerimeter.push_back(f[(i + 2) % 4]);
-            vertsOnPerimeter.push_back(f[(i + 3) % 4]);
+            vertsOnPerimeter.emplace_back(f[(i + 2) % 4]);
+            vertsOnPerimeter.emplace_back(f[(i + 3) % 4]);
           }
         }
         break;
@@ -473,7 +467,7 @@ bool try_vertex_rotation(int rotationVert, Eigen::MatrixXd& V, std::vector<bool>
     int currFace = firstFace;
     do
     {
-      facesCounterclockwise.push_back(currFace);
+      facesCounterclockwise.emplace_back(currFace);
       Eigen::RowVector4i f = F.row(currFace);
       for (int i = 0; i < 4; ++i)
       {
@@ -482,8 +476,8 @@ bool try_vertex_rotation(int rotationVert, Eigen::MatrixXd& V, std::vector<bool>
           int oppNextVert = f[(i + 3) % 4];
           if (currFace != firstFace)
           {
-            vertsOnPerimeter.push_back(f[(i + 2) % 4]);
-            vertsOnPerimeter.push_back(oppNextVert);
+            vertsOnPerimeter.emplace_back(f[(i + 2) % 4]);
+            vertsOnPerimeter.emplace_back(oppNextVert);
           }
           currFace = adjacent_face(currFace, rotationVert, oppNextVert, adt, tombStonesF);
           
@@ -556,7 +550,7 @@ bool try_vertex_rotation(int rotationVert, Eigen::MatrixXd& V, std::vector<bool>
         {
           result = false; // Disable the next possible diagonal collapse
         }
-        remove_doublet(vertDoublet, V, tombStonesV, F, tombStonesF, adt, 
+        remove_doublet(vertDoublet, V, tombStonesV, F, tombStonesF, aliveFaces, adt,
           operations, delOperations);
       }
     }
@@ -592,7 +586,8 @@ bool optimize_quad_mesh(Eigen::MatrixXd& V, std::vector<bool>& tombStonesV,
 }
 */
 bool diagonal_collapse(Diagonal diag, Eigen::MatrixXd& V, std::vector<bool>& tombStonesV,
-  Eigen::MatrixXi& F, std::vector<bool>& tombStonesF, std::vector<std::vector<int>>& adt,
+  Eigen::MatrixXi& F, std::vector<bool>& tombStonesF, int& aliveFaces,
+  std::vector<std::vector<int>>& adt,
   std::priority_queue<Segment, std::vector<Segment>, CompareTwoSegments>& operations,
   std::priority_queue<Segment, std::vector<Segment>, CompareTwoSegments>& delOperations)
 {
@@ -674,6 +669,7 @@ bool diagonal_collapse(Diagonal diag, Eigen::MatrixXd& V, std::vector<bool>& tom
 
   // Remove the face collapsed
   tombStonesF[faceToBeCollapsed] = false;
+  --aliveFaces;
 
   // Calculate and set the new vertex's position
   Eigen::RowVector4i face = F.row(faceToBeCollapsed);
@@ -710,7 +706,7 @@ bool diagonal_collapse(Diagonal diag, Eigen::MatrixXd& V, std::vector<bool>& tom
   }
   if (v1Valence == 2) // Doublet found
   {
-    remove_doublet(vert1ForDoublet, V, tombStonesV, F, tombStonesF, adt, 
+    remove_doublet(vert1ForDoublet, V, tombStonesV, F, tombStonesF, aliveFaces, adt,
       operations, delOperations);
   }
 
@@ -720,7 +716,7 @@ bool diagonal_collapse(Diagonal diag, Eigen::MatrixXd& V, std::vector<bool>& tom
   }
   if (v2Valence == 2) // Doublet found
   {
-    remove_doublet(vert2ForDoublet, V, tombStonesV, F, tombStonesF, adt,
+    remove_doublet(vert2ForDoublet, V, tombStonesV, F, tombStonesF, aliveFaces, adt,
       operations, delOperations);
   }
 
@@ -728,11 +724,12 @@ bool diagonal_collapse(Diagonal diag, Eigen::MatrixXd& V, std::vector<bool>& tom
 }
 
 bool edge_collapse(Edge edge, Eigen::MatrixXd& V, std::vector<bool>& tombStonesV,
-  Eigen::MatrixXi& F, std::vector<bool>& tombStonesF, std::vector<std::vector<int>>& adt,
+  Eigen::MatrixXi& F, std::vector<bool>& tombStonesF, int& aliveFaces, 
+  std::vector<std::vector<int>>& adt,
   std::priority_queue<Segment, std::vector<Segment>, CompareTwoSegments>& operations,
   std::priority_queue<Segment, std::vector<Segment>, CompareTwoSegments>& delOperations)
 {
-  if (!try_vertex_rotation(edge.v1, V, tombStonesV, F, tombStonesF, adt, 
+  if (!try_vertex_rotation(edge.v1, V, tombStonesV, F, tombStonesF, aliveFaces, adt,
     operations, delOperations, edge.v2)) // Force rotation
   {
     // The next diagonal collapse should not be done if the checking for doublets
@@ -743,7 +740,7 @@ bool edge_collapse(Edge edge, Eigen::MatrixXd& V, std::vector<bool>& tombStonesV
   Diagonal diag = edge;
   diag.length /= 2;
   diag.isDiagonal = true;
-  if (!diagonal_collapse(diag, V, tombStonesV, F, tombStonesF, adt, 
+  if (!diagonal_collapse(diag, V, tombStonesV, F, tombStonesF, aliveFaces, adt,
     operations, delOperations))
   {
     return false;
@@ -754,7 +751,8 @@ bool edge_collapse(Edge edge, Eigen::MatrixXd& V, std::vector<bool>& tombStonesV
 
 // Edge collapse or diagonal collapse
 bool coarsen_quad_mesh(Eigen::MatrixXd& V, std::vector<bool>& tombStonesV, 
-  Eigen::MatrixXi& F, std::vector<bool>& tombStonesF, std::vector<std::vector<int>>& adt,
+  Eigen::MatrixXi& F, std::vector<bool>& tombStonesF, int& aliveFaces,
+  std::vector<std::vector<int>>& adt,
   std::priority_queue<Segment, std::vector<Segment>, CompareTwoSegments>& operations,
   std::priority_queue<Segment, std::vector<Segment>, CompareTwoSegments>& delOperations)
 {
@@ -777,7 +775,7 @@ bool coarsen_quad_mesh(Eigen::MatrixXd& V, std::vector<bool>& tombStonesV,
   if (nextOperation.isDiagonal)
   {
     // Diagonal collapse
-    if (!diagonal_collapse(nextOperation, V, tombStonesV, F, tombStonesF, 
+    if (!diagonal_collapse(nextOperation, V, tombStonesV, F, tombStonesF, aliveFaces,
       adt, operations, delOperations))
     {
       return false;
@@ -786,7 +784,7 @@ bool coarsen_quad_mesh(Eigen::MatrixXd& V, std::vector<bool>& tombStonesV,
   else
   {
     // Edge collapse
-    if (!edge_collapse(nextOperation, V, tombStonesV, F, tombStonesF,
+    if (!edge_collapse(nextOperation, V, tombStonesV, F, tombStonesF, aliveFaces,
       adt, operations, delOperations))
     {
       return false;
@@ -805,7 +803,7 @@ bool coarsen_quad_mesh(Eigen::MatrixXd& V, std::vector<bool>& tombStonesV,
       {
         if (f[i] == vertexMaintained)
         {
-          edgesFromVertex.push_back(Edge{ vertexMaintained, f[(i + 1) % 4] });
+          edgesFromVertex.emplace_back(Edge{ vertexMaintained, f[(i + 1) % 4] });
           break;
         }
       }
@@ -818,16 +816,6 @@ bool coarsen_quad_mesh(Eigen::MatrixXd& V, std::vector<bool>& tombStonesV,
   }
   */
   return true;
-}
-
-int how_many_faces_alive(std::vector<bool> tombStonesF)
-{
-  int fCounter = 0;
-  for (bool tomb : tombStonesF)
-  {
-    if (tomb) { ++fCounter; }
-  }
-  return fCounter; // TODO Try return std::count(tombStonesF.begin(), tombStonesF.end(), true);
 }
 
 bool start_simplification(Eigen::MatrixXd& V, Eigen::MatrixXi& F, int finalNumberOfFaces)
@@ -846,20 +834,20 @@ bool start_simplification(Eigen::MatrixXd& V, Eigen::MatrixXi& F, int finalNumbe
   std::vector<std::vector<int>> adt(vSize);
 
   // Used to indicate the faces and vertices already deleted
-  int fSize = F.rows();
-  std::vector<bool> tombStonesF(fSize, true),
+  int aliveFaces = F.rows(); // Store the number of alive faces inside tombStonesF
+  std::vector<bool> tombStonesF(aliveFaces, true),
     tombStonesV(vSize, true); // All are alive at the beginning
 
   // Put all mesh's vertices in a vector in order to improve performance
   std::vector<Eigen::RowVector3d> verts;
-  for (int i = 0; i < vSize; ++i) { verts.push_back(V.row(i)); }
+  for (int i = 0; i < vSize; ++i) { verts.emplace_back(V.row(i)); }
 
   // Retrieve the quad mesh's egdes and diagonals
   typedef CompareTwoSegments CompareTwoEdges;
   std::set<Edge, CompareTwoEdges> edgesTmp; // Temporary set of edges to avoid duplicates
   std::vector<Diagonal> diagonals;
   
-  for (int i = 0; i < fSize; ++i) // For each quad face
+  for (int i = 0; i < aliveFaces; ++i) // For each quad face
   {
     Eigen::RowVector4i face = F.row(i);
     int v0 = face[0], v1 = face[1], v2 = face[2], v3 = face[3];
@@ -876,8 +864,8 @@ bool start_simplification(Eigen::MatrixXd& V, Eigen::MatrixXi& F, int finalNumbe
     edgesTmp.emplace_hint(edgesTmp.end(), 
       Edge{ v3, v0, 2 * squared_distance(verts[v3], verts[v0]), false });
     
-    adt[v0].push_back(i); adt[v1].push_back(i); // TODO emplace_back?
-    adt[v2].push_back(i); adt[v3].push_back(i);
+    adt[v0].emplace_back(i); adt[v1].emplace_back(i);
+    adt[v2].emplace_back(i); adt[v3].emplace_back(i);
   }
 
   // Concatenate all the segments
@@ -892,13 +880,14 @@ bool start_simplification(Eigen::MatrixXd& V, Eigen::MatrixXi& F, int finalNumbe
   std::priority_queue<Segment, std::vector<Segment>, CompareTwoSegments> delOperations;
 
   // Try to coarsen the quad mesh
-  while (how_many_faces_alive(tombStonesF) > finalNumberOfFaces)
+  while (aliveFaces > finalNumberOfFaces)
   {
-    if (!coarsen_quad_mesh(V, tombStonesV, F, tombStonesF, adt, operations, delOperations))
+    if (!coarsen_quad_mesh(V, tombStonesV, F, tombStonesF, aliveFaces, adt, 
+      operations, delOperations))
     {
       return false;
     }
-    std::cout << how_many_faces_alive(tombStonesF) << "\n"; // TODO delete
+    std::cout << aliveFaces << "\n"; // TODO delete
   }
   
   // Set the deleted faces invisible
@@ -1051,7 +1040,7 @@ int main(int argc, char* argv[])
     auto vertex = origV.row(i); // TODO try to use explicit raw type, and put it outside the loop
     for (int j = 0; j < 3; ++j)
     {
-      V[i].push_back(vertex[j]);
+      V[i].emplace_back(vertex[j]);
     }
   }
   for (int i = 0; i < facesCount; ++i)
@@ -1059,7 +1048,7 @@ int main(int argc, char* argv[])
     auto face = origF.row(i); // TODO try to use explicit raw type, and put it outside the loop
     for (int j = 0; j < 4; ++j)
     {
-      F[i].push_back(face[j]);
+      F[i].emplace_back(face[j]);
     }
   }*/
 
