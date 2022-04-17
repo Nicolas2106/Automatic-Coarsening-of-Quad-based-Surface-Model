@@ -31,7 +31,7 @@ struct CompareTwoSegments
     {
       int min1 = std::min(s1.v1, s1.v2), min2 = std::min(s2.v1, s2.v2);
       return min1 == min2 ? std::max(s1.v1, s1.v2) > std::max(s2.v1, s2.v2) : min1 > min2;
-    }
+    } // TODO necessary?
     return s1.length > s2.length;
   }
 };
@@ -213,18 +213,20 @@ void remove_doublet(int vertexToBeRemoved, Eigen::MatrixXd& V,
       operations, delOperations);
   }
 }
-/*
+
 bool try_edge_rotation(Edge edge, Eigen::MatrixXd& V, std::vector<bool>& tombStonesV, 
-  Eigen::MatrixXi& F, std::vector<bool>& tombStonesF, std::vector<std::vector<int>>& adt, 
-  std::set<Edge, compareTwoEdges>& edges, std::set<Edge, compareTwoEdges>& diagonals)
+  Eigen::MatrixXi& F, std::vector<bool>& tombStonesF, int& aliveFaces,
+  std::vector<std::vector<int>>& adt, 
+  std::priority_queue<Segment, std::vector<Segment>, CompareTwoSegments>& operations,
+  std::priority_queue<Segment, std::vector<Segment>, CompareTwoSegments>& delOperations)
 {
   // Find the two faces involved in the edge rotation
   int face1 = -1, face2 = -1;
-  for (int f1 : adt[edge.first])
+  for (int f1 : adt[edge.v1])
   {
     if (tombStonesF[f1])
     {
-      for (int f2 : adt[edge.second])
+      for (int f2 : adt[edge.v2])
       {
         if (tombStonesF[f2])
         {
@@ -250,9 +252,9 @@ bool try_edge_rotation(Edge edge, Eigen::MatrixXd& V, std::vector<bool>& tombSto
   Eigen::RowVector4i f1 = F.row(face1), f2;
   for (int i = 0; i < 4; ++i)
   {
-    if (f1[i] == edge.first)
+    if (f1[i] == edge.v1)
     {
-      if (f1[(i + 1) % 4] == edge.second)
+      if (f1[(i + 1) % 4] == edge.v2)
       {
         f2 = F.row(face2);
         break;
@@ -273,7 +275,7 @@ bool try_edge_rotation(Edge edge, Eigen::MatrixXd& V, std::vector<bool>& tombSto
     oppositeNextVertF1 = -1, oppositeNextVertF2 = -1;
   for (int i = 0; i < 4; ++i)
   {
-    if (f1[i] == edge.first)
+    if (f1[i] == edge.v1) // TODO save edge.v1 and edge.v2 only one time
     {
       oppositeVertF1 = f1[(i + 2) % 4];
       oppositeNextVertF1 = f1[(i + 3) % 4];
@@ -282,7 +284,7 @@ bool try_edge_rotation(Edge edge, Eigen::MatrixXd& V, std::vector<bool>& tombSto
   }
   for (int i = 0; i < 4; ++i)
   {
-    if (f2[i] == edge.first)
+    if (f2[i] == edge.v1)
     {
       oppositeVertF2 = f2[(i + 1) % 4];
       oppositeNextVertF2 = f2[(i + 2) % 4];
@@ -292,7 +294,7 @@ bool try_edge_rotation(Edge edge, Eigen::MatrixXd& V, std::vector<bool>& tombSto
   if (oppositeNextVertF1 == -1 || oppositeNextVertF2 == -1) { return false; }
 
   // Edge rotation is profitable if it shortens the rotated edge and both the diagonals
-  Eigen::RowVector3d edgeFirst = V.row(edge.first), edgeSecond = V.row(edge.second), 
+  Eigen::RowVector3d edgeFirst = V.row(edge.v1), edgeSecond = V.row(edge.v2), 
     oppVertF1 = V.row(oppositeVertF1), oppVertF2 = V.row(oppositeVertF2), 
     oppNextVertF1 = V.row(oppositeNextVertF1), oppNextVertF2 = V.row(oppositeNextVertF2);
 
@@ -309,61 +311,69 @@ bool try_edge_rotation(Edge edge, Eigen::MatrixXd& V, std::vector<bool>& tombSto
 
   bool rotation = false; // True if the edge rotation happens
 
-  if (edgeClockLength < oldEdgeLength &&
-    newDiag1Length < oldDiag1F1Length &&
+  if (edgeClockLength < oldEdgeLength && newDiag1Length < oldDiag1F1Length &&
     newDiag2Length < oldDiag2F2Length) // Clockwise edge rotation
   {
     rotation = true;
 
     // Modify the edge
-    edges.erase(edge);
-    edges.emplace(Edge{ oppositeNextVertF1, oppositeNextVertF2 });
+    delOperations.emplace(edge);
+    operations.emplace(Edge{ oppositeNextVertF1, oppositeNextVertF2,
+      2 * squared_distance(V.row(oppositeNextVertF1), V.row(oppositeNextVertF2)), false });
 
     // Modify the faces involved in the rotation
-    F.row(face1) << oppositeNextVertF1, oppositeNextVertF2, edge.second, oppositeVertF1;
-    F.row(face2) << oppositeNextVertF1, edge.first, oppositeVertF2, oppositeNextVertF2;
+    F.row(face1) << oppositeNextVertF1, oppositeNextVertF2, edge.v2, oppositeVertF1;
+    F.row(face2) << oppositeNextVertF1, edge.v1, oppositeVertF2, oppositeNextVertF2;
 
     // Modify the diagonals involved in the rotation
-    diagonals.erase(Edge{ oppositeVertF1, edge.first });
-    diagonals.emplace(Edge{ oppositeVertF1, oppositeNextVertF2 });
+    delOperations.emplace(Diagonal{ oppositeVertF1, edge.v1, 
+      squared_distance(V.row(oppositeVertF1), V.row(edge.v1)), true });
+    operations.emplace(Diagonal{ oppositeVertF1, oppositeNextVertF2,
+      squared_distance(V.row(oppositeVertF1), V.row(oppositeNextVertF2)), true });
 
-    diagonals.erase(Edge{ oppositeVertF2, edge.second });
-    diagonals.emplace(Edge{ oppositeVertF2, oppositeNextVertF1 });
+    delOperations.emplace(Diagonal{ oppositeVertF2, edge.v2,
+      squared_distance(V.row(oppositeVertF2), V.row(edge.v2)), true });
+    operations.emplace(Diagonal{ oppositeVertF2, oppositeNextVertF1,
+      squared_distance(V.row(oppositeVertF2), V.row(oppositeNextVertF1)), true });
 
     // Update adt
-    adt[edge.first].erase(std::remove(adt[edge.first].begin(),
-      adt[edge.first].end(), face1), adt[edge.first].end());
-    adt[edge.second].erase(std::remove(adt[edge.second].begin(), 
-      adt[edge.second].end(), face2), adt[edge.second].end());
+    adt[edge.v1].erase(std::remove(adt[edge.v1].begin(),
+      adt[edge.v1].end(), face1), adt[edge.v1].end());
+    adt[edge.v2].erase(std::remove(adt[edge.v2].begin(), 
+      adt[edge.v2].end(), face2), adt[edge.v2].end());
     adt[oppositeNextVertF2].emplace_back(face1);
     adt[oppositeNextVertF1].emplace_back(face2);
   }
-  else if (edgeCounterLength < oldEdgeLength &&
-    newDiag1Length < oldDiag1F2Length &&
-    newDiag2Length < oldDiag2F1Length) // Clockwise edge rotation
+  else if (edgeCounterLength < oldEdgeLength && newDiag1Length < oldDiag1F2Length &&
+    newDiag2Length < oldDiag2F1Length) // Counterclockwise edge rotation
   {
     rotation = true;
 
     // Modify the edge
-    edges.erase(edge);
-    edges.emplace(Edge{ oppositeVertF1, oppositeVertF2 });
+    delOperations.emplace(edge);
+    operations.emplace(Edge{ oppositeVertF1, oppositeVertF2,
+      2 * squared_distance(V.row(oppositeVertF1), V.row(oppositeVertF2)), false });
 
     // Modify the faces involved in the rotation
-    F.row(face1) << oppositeNextVertF1, edge.first, oppositeVertF2, oppositeVertF1;
-    F.row(face2) << oppositeVertF2, oppositeNextVertF2, edge.second, oppositeVertF1;
+    F.row(face1) << oppositeNextVertF1, edge.v1, oppositeVertF2, oppositeVertF1;
+    F.row(face2) << oppositeVertF2, oppositeNextVertF2, edge.v2, oppositeVertF1;
 
     // Modify the diagonals involved in the rotation
-    diagonals.erase(Edge{ oppositeNextVertF1, edge.second });
-    diagonals.emplace(Edge{ oppositeNextVertF1, oppositeVertF2 });
+    delOperations.emplace(Diagonal{ oppositeNextVertF1, edge.v2,
+      squared_distance(V.row(oppositeNextVertF1), V.row(edge.v2)), true });
+    operations.emplace(Diagonal{ oppositeNextVertF1, oppositeVertF2,
+      squared_distance(V.row(oppositeNextVertF1), V.row(oppositeVertF2)), true });
 
-    diagonals.erase(Edge{ oppositeNextVertF2, edge.first });
-    diagonals.emplace(Edge{ oppositeNextVertF2, oppositeVertF1 });
+    delOperations.emplace(Diagonal{ oppositeNextVertF2, edge.v1,
+      squared_distance(V.row(oppositeNextVertF2), V.row(edge.v1)), true });
+    operations.emplace(Diagonal{ oppositeNextVertF2, oppositeVertF1,
+      squared_distance(V.row(oppositeNextVertF2), V.row(oppositeVertF1)), true });
 
     // Update adt
-    adt[edge.first].erase(std::remove(adt[edge.first].begin(),
-      adt[edge.first].end(), face2), adt[edge.first].end());
-    adt[edge.second].erase(std::remove(adt[edge.second].begin(),
-      adt[edge.second].end(), face1), adt[edge.second].end());
+    adt[edge.v1].erase(std::remove(adt[edge.v1].begin(),
+      adt[edge.v1].end(), face2), adt[edge.v1].end());
+    adt[edge.v2].erase(std::remove(adt[edge.v2].begin(),
+      adt[edge.v2].end(), face1), adt[edge.v2].end());
     adt[oppositeVertF2].emplace_back(face1);
     adt[oppositeVertF1].emplace_back(face2);
   }
@@ -372,30 +382,30 @@ bool try_edge_rotation(Edge edge, Eigen::MatrixXd& V, std::vector<bool>& tombSto
   {
     // Searching for the two possible doublets created after the edge rotation
     int v1Valence = 0, v2Valence = 0;
-    for (int face : adt[edge.first])
+    for (int face : adt[edge.v1])
     {
       if (tombStonesF[face]) { ++v1Valence; }
     }
     if (v1Valence == 2) // Doublet found
     {
-      remove_doublet(V, tombStonesV, F, tombStonesF, adt, edge.first,
-        edges, diagonals);
+      remove_doublet(edge.v1, V, tombStonesV, F, tombStonesF, aliveFaces, adt,
+        operations, delOperations);
     }
 
-    for (int face : adt[edge.second])
+    for (int face : adt[edge.v2])
     {
       if (tombStonesF[face]) { ++v2Valence; }
     }
     if (v2Valence == 2) // Doublet found
     {
-      remove_doublet(V, tombStonesV, F, tombStonesF, adt, edge.second,
-        edges, diagonals);
+      remove_doublet(edge.v2, V, tombStonesV, F, tombStonesF, aliveFaces, adt,
+        operations, delOperations);
     }
   }
 
   return true;
 }
-*/
+
 bool try_vertex_rotation(int rotationVert, Eigen::MatrixXd& V, std::vector<bool>& tombStonesV,
   Eigen::MatrixXi& F, std::vector<bool>& tombStonesF, int& aliveFaces,
   std::vector<std::vector<int>>& adt,
@@ -560,31 +570,32 @@ bool try_vertex_rotation(int rotationVert, Eigen::MatrixXd& V, std::vector<bool>
 
   return true;
 }
-/*
+
 // Edge rotation and vertex rotation
-bool optimize_quad_mesh(Eigen::MatrixXd& V, std::vector<bool>& tombStonesV, 
-  Eigen::MatrixXi& F, std::vector<bool>& tombStonesF, std::vector<std::vector<int>>& adt,
-  std::set<Edge, compareTwoEdges>& edges, std::set<Edge, compareTwoEdges>& diagonals,
-  std::vector<Edge> involvedEdges, std::vector<int> involvedVertices)
+bool optimize_quad_mesh(std::vector<Edge> involvedEdges, std::vector<int> involvedVertices,
+  Eigen::MatrixXd& V, std::vector<bool>& tombStonesV, Eigen::MatrixXi& F, 
+  std::vector<bool>& tombStonesF, int& aliveFaces, std::vector<std::vector<int>>& adt,
+  std::priority_queue<Segment, std::vector<Segment>, CompareTwoSegments>& operations,
+  std::priority_queue<Segment, std::vector<Segment>, CompareTwoSegments>& delOperations)
 {
-  // Edge rotation
-  for (Edge edge : involvedEdges)
+  for (const Edge& edge : involvedEdges) // Edge rotation TODO try to remove const and &
   {
-    if (!try_edge_rotation(edge, V, tombStonesV, F, tombStonesF, adt, edges, diagonals))
+    if (!try_edge_rotation(edge, V, tombStonesV, F, tombStonesF, aliveFaces, adt,
+      operations, delOperations))
     {
       return false;
     }
   }
 
-  // Vertex rotation
-  for (int vert : involvedVertices)
+  for (int vert : involvedVertices) // Vertex rotation
   {
-    try_vertex_rotation(vert, V, tombStonesV, F, tombStonesF, adt, edges, diagonals);
+    try_vertex_rotation(vert, V, tombStonesV, F, tombStonesF, aliveFaces, adt, 
+      operations, delOperations);
   }
 
   return true;
 }
-*/
+
 bool diagonal_collapse(Diagonal diag, Eigen::MatrixXd& V, std::vector<bool>& tombStonesV,
   Eigen::MatrixXi& F, std::vector<bool>& tombStonesF, int& aliveFaces,
   std::vector<std::vector<int>>& adt,
@@ -790,31 +801,33 @@ bool coarsen_quad_mesh(Eigen::MatrixXd& V, std::vector<bool>& tombStonesV,
       return false;
     }
   }
-  /*
+  
   // Final local optimization
   std::vector<Edge> edgesFromVertex;
-  int vertexMaintained = nextOperation.v1;
-  for (int face : adt[vertexMaintained])
+  int survivedVertex = nextOperation.v1;
+  Eigen::RowVector3d rawSurvivedVertex = V.row(survivedVertex);
+  for (int face : adt[survivedVertex])
   {
     if (tombStonesF[face])
     {
-      auto f = F.row(face); // TODO Try to explicit raw type outside the loop
+      Eigen::RowVector4i f = F.row(face); // TODO Try to explicit raw type outside the loop
       for (int i = 0; i < 4; ++i)
       {
-        if (f[i] == vertexMaintained)
+        if (f[i] == survivedVertex)
         {
-          edgesFromVertex.emplace_back(Edge{ vertexMaintained, f[(i + 1) % 4] });
+          edgesFromVertex.emplace_back(Edge{ survivedVertex, f[(i + 1) % 4],
+            2 * squared_distance(rawSurvivedVertex, V.row(f[(i + 1) % 4])), false });
           break;
         }
       }
     }
   }
-  if (!optimize_quad_mesh(V, tombStonesV, F, tombStonesF, adt, edges, diagonals,
-    edgesFromVertex, { vertexMaintained }))
+  if (!optimize_quad_mesh(edgesFromVertex, { survivedVertex }, V, tombStonesV,
+    F, tombStonesF, aliveFaces, adt, operations, delOperations))
   {
     return false;
   }
-  */
+  
   return true;
 }
 
@@ -1024,7 +1037,7 @@ int main(int argc, char* argv[])
   Eigen::MatrixXi F;
 
   // Load a mesh
-  //igl::readOFF(MESHES_DIR + "edge_collapse.off", V, F);
+  //igl::readOFF(MESHES_DIR + "edge_rotate_doublet.off", V, F);
   igl::readOBJ(MESHES_DIR + "quad_cubespikes.obj", V, F);
 
   std::cout << "Quad mesh coarsening in progress...\n\n";
