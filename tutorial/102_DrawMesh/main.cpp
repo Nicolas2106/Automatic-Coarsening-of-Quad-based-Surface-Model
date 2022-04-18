@@ -576,15 +576,21 @@ bool optimize_quad_mesh(std::vector<Edge>& involvedEdges, int involvedVertex,
 {
   for (Edge& edge : involvedEdges)
   {
-    if (!try_edge_rotation(edge, V, tombStonesV, F, tombStonesF, aliveFaces, adt,
-      operations, delOperations))
+    if (tombStonesV[edge.v2] && tombStonesV[edge.v1])
     {
-      return false;
+      if (!try_edge_rotation(edge, V, tombStonesV, F, tombStonesF, aliveFaces, adt,
+        operations, delOperations))
+      {
+        return false;
+      }
     }
   }
 
-  try_vertex_rotation(involvedVertex, V, tombStonesV, F, tombStonesF, aliveFaces, adt, 
+  if (tombStonesV[involvedVertex])
+  {
+    try_vertex_rotation(involvedVertex, V, tombStonesV, F, tombStonesF, aliveFaces, adt,
       operations, delOperations);
+  }
 
   return true;
 }
@@ -821,11 +827,8 @@ bool coarsen_quad_mesh(Eigen::MatrixXd& V, std::vector<bool>& tombStonesV,
       }
     }
   }
-  if (!optimize_quad_mesh(edgesFromVertex, survivedVertex, V, tombStonesV,
-    F, tombStonesF, aliveFaces, adt, operations, delOperations))
-  {
-    return false;
-  }
+  optimize_quad_mesh(edgesFromVertex, survivedVertex, V, tombStonesV,
+    F, tombStonesF, aliveFaces, adt, operations, delOperations);
   
   return true;
 }
@@ -1039,7 +1042,7 @@ int main(int argc, char* argv[])
 
   // Load a mesh
   //igl::readOFF(MESHES_DIR + "edge_rotate_doublet.off", V, F);
-  igl::readOBJ(MESHES_DIR + "quad_cubespikes.obj", V, F);
+  igl::readOBJ(MESHES_DIR + "armadillo.obj", V, F);
 
   std::cout << "Quad mesh coarsening in progress...\n\n";
   auto start_time = std::chrono::high_resolution_clock::now(); // TODO delete
@@ -1066,7 +1069,7 @@ int main(int argc, char* argv[])
     }
   }*/
 
-  if (start_simplification(V, F, 300))
+  if (start_simplification(V, F, 500))
   {
     auto end_time = std::chrono::high_resolution_clock::now(); // TODO delete
     std::cout << "\n" << (end_time - start_time) / std::chrono::milliseconds(1) << " milliseconds\n\n"; // TODO delete
@@ -1075,6 +1078,6 @@ int main(int argc, char* argv[])
   }
   else
   {
-    std::cout << "\n\n" << "ERROR occured during the quad mesh simplification\n\n";
+    std::cout << "\n\n" << "ERROR occurred during the quad mesh simplification\n\n";
   }
 }
