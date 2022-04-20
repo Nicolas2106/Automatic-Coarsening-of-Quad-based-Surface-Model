@@ -48,24 +48,41 @@ double squared_distance(const Eigen::RowVector3d& vertex1,
   return deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ;
 }
 
-Eigen::RowVector3d new_vertex_pos(Eigen::MatrixXd& V, Eigen::MatrixXi& F, 
-  std::vector<bool>& tombStonesF, std::vector<std::vector<int>>& adt, int oldVert,
-  const std::vector<int>& faceVertices)
+void new_vertex_pos(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
+  std::vector<bool>& tombStonesF, std::vector<std::vector<int>>& adt,
+  const int oldVert, const Eigen::RowVector4i& baseFace, Eigen::RowVector3d vertOnFace,
+  std::priority_queue<Segment, std::vector<Segment>, CompareTwoSegments>& operations,
+  std::priority_queue<Segment, std::vector<Segment>, CompareTwoSegments>& delOperations,
+  bool collapse)
 {
-  Eigen::RowVector3d centroid{ 0.0, 0.0, 0.0 };
+  Eigen::RowVector3d centroid{ 0.0, 0.0, 0.0 }, rawOldVert = V.row(oldVert);
   int size = 0;
+  Eigen::RowVector4i f;
   for (int face : adt[oldVert])
   {
     if (tombStonesF[face])
     {
-      Eigen::RowVector4i f = F.row(face);
+      f = F.row(face);
       for (int i = 0; i < 4; ++i)
       {
         if (f[i] == oldVert)
         {
-          centroid += V.row(f[(i + 1) % 4]); // Next vertex
-          centroid += V.row(f[(i + 2) % 4]); // Opposite vertex
+          int nextVert = f[(i + 1) % 4], oppositeVert = f[(i + 2) % 4];
+          Eigen::RowVector3d rawNextVert = V.row(nextVert), 
+            rawOppVert = V.row(oppositeVert);
+          
+          centroid += rawNextVert;
+          centroid += rawOppVert;
           size += 2;
+
+          if (!collapse)
+          {
+            delOperations.emplace(Edge{ oldVert, nextVert,
+              2 * squared_distance(rawOldVert, rawNextVert), false });
+            delOperations.emplace(Diagonal{ oldVert, oppositeVert,
+              squared_distance(rawOldVert, rawOppVert), true });
+          }
+
           break;
         }
       }
@@ -73,17 +90,38 @@ Eigen::RowVector3d new_vertex_pos(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
   }
   centroid /= size;
 
+  Eigen::Matrix<double, 4, 3> pointCloud;
+  pointCloud << V.row(baseFace[0]), V.row(baseFace[1]), 
+    V.row(baseFace[2]), V.row(baseFace[3]);
   Eigen::RowVector3d normal, pointOnPlane;
-  Eigen::Matrix<double, 4, 3> v;
-  v <<
-    V.row(faceVertices[0]),
-    V.row(faceVertices[1]),
-    V.row(faceVertices[2]),
-    V.row(faceVertices[3]);
-  igl::fit_plane(v, normal, pointOnPlane);
+  igl::fit_plane(pointCloud, normal, pointOnPlane);
   
-  double proj = (centroid - pointOnPlane).dot(normal);
-  return centroid - (proj * normal);
+  double proj = (centroid - vertOnFace).dot(normal);
+  Eigen::RowVector3d rawNewVert = centroid - (proj * normal);
+  V.row(oldVert) = rawNewVert;
+
+  // Update the priority queue of potential operations according the new configuration
+  for (int face : adt[oldVert])
+  {
+    if (tombStonesF[face])
+    {
+      f = F.row(face);
+      for (int i = 0; i < 4; ++i)
+      {
+        if (f[i] == oldVert)
+        {
+          int nextVert = f[(i + 1) % 4], oppositeVert = f[(i + 2) % 4];
+
+          operations.emplace(Edge{ oldVert, nextVert,
+              2 * squared_distance(rawNewVert, V.row(nextVert)), false });
+          operations.emplace(Diagonal{ oldVert, oppositeVert,
+              squared_distance(rawNewVert, V.row(oppositeVert)), true });
+
+          break;
+        }
+      }
+    }
+  }
 }
 
 int adjacent_face(int face, int vert1, int vert2, 
@@ -134,15 +172,15 @@ void remove_doublet(int vertexToBeRemoved, Eigen::MatrixXd& V,
   if (adtSize != 2) { return; } // Incorrect input (No doublet)
   if (faceToBeRemoved == -1 || faceToBeMaintained == -1) { return; }
 
-  Eigen::RowVector4i f = F.row(faceToBeRemoved);
+  Eigen::RowVector4i rawFaceRemoved = F.row(faceToBeRemoved);
   int endVert1 = -1, oppositeVert, endVert2;
   for (int i = 0; i < 4; ++i)
   {
-    if (f[i] == vertexToBeRemoved)
+    if (rawFaceRemoved[i] == vertexToBeRemoved)
     {
-      endVert1 = f[(i + 1) % 4];
-      oppositeVert = f[(i + 2) % 4];
-      endVert2 = f[(i + 3) % 4];
+      endVert1 = rawFaceRemoved[(i + 1) % 4];
+      oppositeVert = rawFaceRemoved[(i + 2) % 4];
+      endVert2 = rawFaceRemoved[(i + 3) % 4];
       break;
     }
   }
@@ -168,14 +206,15 @@ void remove_doublet(int vertexToBeRemoved, Eigen::MatrixXd& V,
   --aliveFaces;
 
   // Modify the remaining face and complete the update of the priority queue
-  f = F.row(faceToBeMaintained);
+  Eigen::RowVector4i rawFaceMaintained = F.row(faceToBeMaintained);
+  int v = -1;
   for (int i = 0; i < 4; ++i)
   {
-    if (f[i] == vertexToBeRemoved)
+    if (rawFaceMaintained[i] == vertexToBeRemoved)
     {
       F.row(faceToBeMaintained)[i] = oppositeVert;
 
-      int v = F.row(faceToBeMaintained)[(i + 2) % 4];
+      v = F.row(faceToBeMaintained)[(i + 2) % 4];
       Eigen::RowVector3d rawV = V.row(v);
       delOperations.emplace(Diagonal{ v, vertexToBeRemoved,
         squared_distance(rawV, rawVertToBeRemoved), true });
@@ -185,12 +224,63 @@ void remove_doublet(int vertexToBeRemoved, Eigen::MatrixXd& V,
       break;
     }
   }
+  if (v == -1) { return; }
+  rawFaceMaintained = F.row(faceToBeMaintained);
 
   // Add the new face (the face mantained) to adt
   adt[oppositeVert].emplace_back(faceToBeMaintained);
 
   // Remove the vertex at the center of the doublet
   tombStonesV[vertexToBeRemoved] = false;
+
+  // Check if a singlet has been created
+  if (v == oppositeVert)
+  {
+    // Singlet found. 
+    // Remove the diagonals and the edges belong to the singlet
+    int singletIndex = -1, valence = 0;
+    for (int i = 0; i < 4; ++i, valence = 0)
+    {
+      for (int face : adt[rawFaceMaintained[i]])
+      {
+        if (tombStonesF[face]) { ++valence; }
+      }
+      
+      if (valence == 1) 
+      { 
+        singletIndex = i; // Singlet vertex has valence equal to 1
+      }
+      
+    }
+    if (singletIndex == -1) { return; }
+    
+    int singletVert = rawFaceMaintained[singletIndex];
+    int oppSingletVert = rawFaceMaintained[(singletIndex + 2) % 4];
+    int doubleSingletVert = rawFaceMaintained[(singletIndex + 1) % 4];
+    Eigen::RowVector3d rawOppSingVert = V.row(oppSingletVert);
+
+    delOperations.emplace(Diagonal{ singletVert, oppSingletVert,
+      squared_distance(V.row(singletVert), rawOppSingVert), true});
+    delOperations.emplace(Diagonal{ doubleSingletVert, doubleSingletVert, 0.0, true });
+    delOperations.emplace(Edge{ doubleSingletVert, oppSingletVert,
+      2 * squared_distance(V.row(doubleSingletVert), rawOppSingVert), false });
+
+    // Remove the face and the singlet vertex
+    tombStonesF[faceToBeMaintained] = false;
+    tombStonesV[singletVert] = false;
+  }
+  else
+  {
+    // Compute and set the new positions of vertices adjacent to the doublet
+    new_vertex_pos(V, F, tombStonesF, adt, v, rawFaceMaintained, rawVertToBeRemoved,
+      operations, delOperations, false);
+    new_vertex_pos(V, F, tombStonesF, adt, oppositeVert, rawFaceRemoved, rawVertToBeRemoved,
+      operations, delOperations, false);
+    new_vertex_pos(V, F, tombStonesF, adt, endVert1, rawFaceMaintained, rawVertToBeRemoved,
+      operations, delOperations, false);
+    new_vertex_pos(V, F, tombStonesF, adt, endVert2, rawFaceMaintained, rawVertToBeRemoved,
+      operations, delOperations, false);
+  }
 
   // Check if other doublets are created in cascade at the two endpoints
   int v1Valence = 0, v2Valence = 0;
@@ -383,6 +473,20 @@ bool try_edge_rotation(const Edge& edge, Eigen::MatrixXd& V,
   
   if (rotation)
   {
+    // Compute and set the new positions of vertices adjacent to the edge rotated
+    /*new_vertex_pos(V, F, tombStonesF, adt, edgeFirst, f1, 
+      operations, delOperations, false);
+    new_vertex_pos(V, F, tombStonesF, adt, edgeSecond, f2, 
+      operations, delOperations, false);
+    new_vertex_pos(V, F, tombStonesF, adt, oppositeVertF1, f1, 
+      operations, delOperations, false);
+    new_vertex_pos(V, F, tombStonesF, adt, oppositeVertF2, f2, 
+      operations, delOperations, false);
+    new_vertex_pos(V, F, tombStonesF, adt, oppositeNextVertF1, f1, 
+      operations, delOperations, false);
+    new_vertex_pos(V, F, tombStonesF, adt, oppositeNextVertF2, f2, 
+      operations, delOperations, false);*/
+    
     // Searching for the two possible doublets created after the edge rotation
     int v1Valence = 0, v2Valence = 0;
     for (int face : adt[edgeFirst])
@@ -540,6 +644,27 @@ bool try_vertex_rotation(int rotationVert, Eigen::MatrixXd& V,
       operations.emplace(segment);
     }
 
+    // Compute and set the new positions of vertices adjacent to the vertex rotated
+    /*for (int face : adt[rotationVert])
+    {
+      if (tombStonesF[face])
+      {
+        f = F.row(face);
+        for (int i = 0; i < 4; ++i)
+        {
+          if (f[i] == rotationVert)
+          {
+            // Next vertex
+            new_vertex_pos(V, F, tombStonesF, adt, f[(i + 1) % 4], f,
+              V.row(f[(i + 1) % 4]), operations, delOperations, false);
+            // Opposite vertex
+            new_vertex_pos(V, F, tombStonesF, adt, f[(i + 2) % 4], f,
+              V.row(f[(i + 2) % 4]), operations, delOperations, false);
+          }
+        }
+      }
+    }*/
+
     // Searching for possible doublets
     bool result = true;
     for (int vertDoublet : vertsForDoublets)
@@ -683,12 +808,11 @@ bool diagonal_collapse(const Diagonal& diag, Eigen::MatrixXd& V, std::vector<boo
   --aliveFaces;
 
   // Calculate and set the new vertex's position
-  f = F.row(faceToBeCollapsed);
-  rawVertToBeMaintained = new_vertex_pos(V, F, tombStonesF, adt, 
-    vertexToBeMaintained, { f[0], f[1], f[2], f[3] });
-  V.row(vertexToBeMaintained) = rawVertToBeMaintained;
+  Eigen::RowVector3d midpoint = 0.5 * rawVertToBeMaintained + 0.5 * rawVertToBeRemoved;
+  new_vertex_pos(V, F, tombStonesF, adt, vertexToBeMaintained, F.row(faceToBeCollapsed),
+    midpoint, operations, delOperations, true);
 
-  // Update the priority queue of potential operations according the new configuration
+  // Calculate and set the new position of the vertices adjacent to the new vertex
   for (int face : adt[vertexToBeMaintained])
   {
     if (tombStonesF[face])
@@ -698,14 +822,12 @@ bool diagonal_collapse(const Diagonal& diag, Eigen::MatrixXd& V, std::vector<boo
       {
         if (f[i] == vertexToBeMaintained)
         {
-          int nextVert = f[(i + 1) % 4], oppositeVert = f[(i + 2) % 4];
-          
-          operations.emplace(Edge{ vertexToBeMaintained, nextVert,
-              2 * squared_distance(rawVertToBeMaintained, V.row(nextVert)), false });
-          operations.emplace(Diagonal{ vertexToBeMaintained, oppositeVert,
-              squared_distance(rawVertToBeMaintained, V.row(oppositeVert)), true });
-          
-          break;
+          // Next vertex
+          new_vertex_pos(V, F, tombStonesF, adt, f[(i + 1) % 4], f, midpoint,
+            operations, delOperations, false);
+          // Opposite vertex
+          new_vertex_pos(V, F, tombStonesF, adt, f[(i + 2) % 4], f, midpoint,
+            operations, delOperations, false);
         }
       }
     }
@@ -1041,8 +1163,8 @@ int main(int argc, char* argv[])
   Eigen::MatrixXi F;
 
   // Load a mesh
-  //igl::readOFF(MESHES_DIR + "edge_rotate_doublet.off", V, F);
-  igl::readOBJ(MESHES_DIR + "armadillo.obj", V, F);
+  //igl::readOFF(MESHES_DIR + "singlet.off", V, F);
+  igl::readOBJ(MESHES_DIR + "gargoyle.obj", V, F);
 
   std::cout << "Quad mesh coarsening in progress...\n\n";
   auto start_time = std::chrono::high_resolution_clock::now(); // TODO delete
@@ -1069,7 +1191,7 @@ int main(int argc, char* argv[])
     }
   }*/
 
-  if (start_simplification(V, F, 500))
+  if (start_simplification(V, F, 11000))
   {
     auto end_time = std::chrono::high_resolution_clock::now(); // TODO delete
     std::cout << "\n" << (end_time - start_time) / std::chrono::milliseconds(1) << " milliseconds\n\n"; // TODO delete
@@ -1080,4 +1202,5 @@ int main(int argc, char* argv[])
   {
     std::cout << "\n\n" << "ERROR occurred during the quad mesh simplification\n\n";
   }
+
 }
