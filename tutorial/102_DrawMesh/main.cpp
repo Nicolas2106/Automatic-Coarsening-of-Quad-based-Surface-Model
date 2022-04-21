@@ -6,6 +6,7 @@
 #include <igl/opengl/glfw/Viewer.h>
 #include <igl/per_face_normals.h>
 #include <igl/doublearea.h>
+#include <igl/quadric_binary_plus_operator.h>
 #include <queue>
 #include "tutorial_shared_path.h"
 
@@ -39,6 +40,9 @@ struct CompareTwoSegments
 typedef Segment Diagonal;
 typedef Segment Edge;
 
+typedef std::tuple<Eigen::MatrixXd, Eigen::RowVectorXd, double> Quadric;
+std::vector<Quadric> quadrics;
+
 double squared_distance(const Eigen::RowVector3d& vertex1, 
   const Eigen::RowVector3d& vertex2)
 {
@@ -50,37 +54,28 @@ double squared_distance(const Eigen::RowVector3d& vertex1,
 
 void new_vertex_pos(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
   std::vector<bool>& tombStonesF, std::vector<std::vector<int>>& adt,
-  const int oldVert, const Eigen::RowVector4i& baseFace, Eigen::RowVector3d vertOnFace,
   std::priority_queue<Segment, std::vector<Segment>, CompareTwoSegments>& operations,
   std::priority_queue<Segment, std::vector<Segment>, CompareTwoSegments>& delOperations,
-  bool collapse)
+  bool collapse, int vM, int vR)
 {
-  Eigen::RowVector3d centroid{ 0.0, 0.0, 0.0 }, rawOldVert = V.row(oldVert);
-  int size = 0;
   Eigen::RowVector4i f;
-  for (int face : adt[oldVert])
+  for (int face : adt[vM])
   {
     if (tombStonesF[face])
     {
       f = F.row(face);
       for (int i = 0; i < 4; ++i)
       {
-        if (f[i] == oldVert)
+        if (f[i] == vM)
         {
           int nextVert = f[(i + 1) % 4], oppositeVert = f[(i + 2) % 4];
-          Eigen::RowVector3d rawNextVert = V.row(nextVert), 
-            rawOppVert = V.row(oppositeVert);
-          
-          centroid += rawNextVert;
-          centroid += rawOppVert;
-          size += 2;
 
           if (!collapse)
           {
-            delOperations.emplace(Edge{ oldVert, nextVert,
-              2 * squared_distance(rawOldVert, rawNextVert), false });
-            delOperations.emplace(Diagonal{ oldVert, oppositeVert,
-              squared_distance(rawOldVert, rawOppVert), true });
+            delOperations.emplace(Edge{ vM, nextVert,
+              2 * squared_distance(V.row(vM), V.row(nextVert)), false });
+            delOperations.emplace(Diagonal{ vM, oppositeVert,
+              squared_distance(V.row(vM), V.row(oppositeVert)), true });
           }
 
           break;
@@ -88,34 +83,55 @@ void new_vertex_pos(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
       }
     }
   }
-  centroid /= size;
 
-  Eigen::Matrix<double, 4, 3> pointCloud;
-  pointCloud << V.row(baseFace[0]), V.row(baseFace[1]), 
-    V.row(baseFace[2]), V.row(baseFace[3]);
-  Eigen::RowVector3d normal, pointOnPlane;
-  igl::fit_plane(pointCloud, normal, pointOnPlane);
+  Quadric newQuadric = Quadric(
+    (std::get<0>(quadrics[vM]) + std::get<0>(quadrics[vR])).eval(),
+    (std::get<1>(quadrics[vM]) + std::get<1>(quadrics[vR])).eval(),
+    (std::get<2>(quadrics[vM]) + std::get<2>(quadrics[vR])));
+
+  Eigen::RowVector3d rawNewVert;
+  if (std::get<0>(newQuadric).determinant() != 0.0)
+  {
+    const auto& A = std::get<0>(newQuadric);
+    const auto& b = std::get<1>(newQuadric);
+    const auto& c = std::get<2>(newQuadric);
+    
+    // Invertible matrix
+    rawNewVert = -b * A.inverse();
+
+    //double cost = -std::get<1>(newQuadric) * std::get<0>(newQuadric).inverse() * std::get<1>(newQuadric).transpose() + std::get<2>(newQuadric);
+  }
+  else
+  {
+    // Not invertible matrix
+    double vMCost = V.row(vM) * std::get<0>(quadrics[vM]) * V.row(vM).transpose();
+    vMCost += (2 * std::get<1>(quadrics[vM]) * V.row(vM).transpose() + std::get<2>(quadrics[vM]));
+    double vRCost = V.row(vR) * std::get<0>(quadrics[vR]) * V.row(vR).transpose();
+    vRCost += (2 * std::get<1>(quadrics[vR]) * V.row(vR).transpose() + std::get<2>(quadrics[vR]));
+
+    rawNewVert = vMCost < vRCost ? V.row(vM) : V.row(vR);
+  }
   
-  double proj = (centroid - vertOnFace).dot(normal);
-  Eigen::RowVector3d rawNewVert = centroid - (proj * normal);
-  V.row(oldVert) = rawNewVert;
+  quadrics[vM] = newQuadric;
+  
+  V.row(vM) = rawNewVert;
 
   // Update the priority queue of potential operations according the new configuration
-  for (int face : adt[oldVert])
+  for (int face : adt[vM])
   {
     if (tombStonesF[face])
     {
       f = F.row(face);
       for (int i = 0; i < 4; ++i)
       {
-        if (f[i] == oldVert)
+        if (f[i] == vM)
         {
           int nextVert = f[(i + 1) % 4], oppositeVert = f[(i + 2) % 4];
 
-          operations.emplace(Edge{ oldVert, nextVert,
-              2 * squared_distance(rawNewVert, V.row(nextVert)), false });
-          operations.emplace(Diagonal{ oldVert, oppositeVert,
-              squared_distance(rawNewVert, V.row(oppositeVert)), true });
+          operations.emplace(Edge{ vM, nextVert,
+              2 * squared_distance(V.row(vM), V.row(nextVert)), false });
+          operations.emplace(Diagonal{ vM, oppositeVert,
+              squared_distance(V.row(vM), V.row(oppositeVert)), true });
 
           break;
         }
@@ -272,14 +288,14 @@ void remove_doublet(int vertexToBeRemoved, Eigen::MatrixXd& V,
   else
   {
     // Compute and set the new positions of vertices adjacent to the doublet
-    new_vertex_pos(V, F, tombStonesF, adt, v, rawFaceMaintained, rawVertToBeRemoved,
-      operations, delOperations, false);
-    new_vertex_pos(V, F, tombStonesF, adt, oppositeVert, rawFaceRemoved, rawVertToBeRemoved,
-      operations, delOperations, false);
-    new_vertex_pos(V, F, tombStonesF, adt, endVert1, rawFaceMaintained, rawVertToBeRemoved,
-      operations, delOperations, false);
-    new_vertex_pos(V, F, tombStonesF, adt, endVert2, rawFaceMaintained, rawVertToBeRemoved,
-      operations, delOperations, false);
+    /*new_vertex_pos(V, F, tombStonesF, adt,
+      operations, delOperations, false, v, endVert1);
+    new_vertex_pos(V, F, tombStonesF, adt,
+      operations, delOperations, false, oppositeVert, endVert2);
+    new_vertex_pos(V, F, tombStonesF, adt,
+      operations, delOperations, false, endVert1, endVert2);
+    new_vertex_pos(V, F, tombStonesF, adt,
+      operations, delOperations, false, endVert2, endVert1);*/
   }
 
   // Check if other doublets are created in cascade at the two endpoints
@@ -808,11 +824,9 @@ bool diagonal_collapse(const Diagonal& diag, Eigen::MatrixXd& V, std::vector<boo
   --aliveFaces;
 
   // Calculate and set the new vertex's position
-  Eigen::RowVector3d midpoint = 0.5 * rawVertToBeMaintained + 0.5 * rawVertToBeRemoved;
-  new_vertex_pos(V, F, tombStonesF, adt, vertexToBeMaintained, F.row(faceToBeCollapsed),
-    midpoint, operations, delOperations, true);
+  new_vertex_pos(V, F, tombStonesF, adt, operations, delOperations, true, vertexToBeMaintained, vertexToBeRemoved);
 
-  // Calculate and set the new position of the vertices adjacent to the new vertex
+  /*// Calculate and set the new position of the vertices adjacent to the new vertex
   for (int face : adt[vertexToBeMaintained])
   {
     if (tombStonesF[face])
@@ -823,15 +837,15 @@ bool diagonal_collapse(const Diagonal& diag, Eigen::MatrixXd& V, std::vector<boo
         if (f[i] == vertexToBeMaintained)
         {
           // Next vertex
-          new_vertex_pos(V, F, tombStonesF, adt, f[(i + 1) % 4], f, midpoint,
-            operations, delOperations, false);
+          new_vertex_pos(V, F, tombStonesF, adt,
+            operations, delOperations, false, f[(i + 1) % 4], vertexToBeMaintained);
           // Opposite vertex
-          new_vertex_pos(V, F, tombStonesF, adt, f[(i + 2) % 4], f, midpoint,
-            operations, delOperations, false);
+          new_vertex_pos(V, F, tombStonesF, adt,
+            operations, delOperations, false, f[(i + 2) % 4], vertexToBeMaintained);
         }
       }
     }
-  }
+  }*/
 
   // Searching for possible doublets
   int v1Valence = 0, v2Valence = 0;
@@ -957,13 +971,13 @@ bool coarsen_quad_mesh(Eigen::MatrixXd& V, std::vector<bool>& tombStonesV,
 
 bool start_simplification(Eigen::MatrixXd& V, Eigen::MatrixXi& F, int finalNumberOfFaces)
 {
-  int minimumNumberOfFaces = 15;
+  /*int minimumNumberOfFaces = 15;
   if (finalNumberOfFaces < minimumNumberOfFaces)
   {
     std::cout << "The minimum number of faces is " << minimumNumberOfFaces << 
       ". Use a larger number please.\n";
     return true;
-  }
+  }*/
   
   // Used to navigate the mesh
   // For each vertex, store the indices of the adjacent faces
@@ -1014,6 +1028,36 @@ bool start_simplification(Eigen::MatrixXd& V, Eigen::MatrixXi& F, int finalNumbe
   
   // A priority queue containing the deleted operations to be ignored
   std::priority_queue<Segment, std::vector<Segment>, CompareTwoSegments> delOperations;
+
+  // Compute quadrics per vertex
+  Eigen::MatrixXd verts(4, 3);
+  Eigen::RowVector4i f;
+  for (int i = 0; i < V.rows(); ++i)
+  {
+    Quadric quadric = Quadric(Eigen::Matrix3d::Zero(), Eigen::RowVector3d::Zero(), 0.0);
+    for (int face : adt[i])
+    {
+      f = F.row(face);
+      Eigen::RowVector3d n; // Normal
+      Eigen::RowVector3d p; // Point on the plane
+      Eigen::RowVector3d v1 = V.row(f[0]), v2 = V.row(f[1]), 
+        v3 = V.row(f[2]), v4 = V.row(f[3]);
+      verts <<
+        v1[0], v1[1], v1[2],
+        v2[0], v2[1], v2[2],
+        v3[0], v3[1], v3[2],
+        v4[0], v4[1], v4[2];
+      
+      igl::fit_plane(verts, n, p);
+      double d = (-n).dot(p); // We now have the equation of the plane: n'v + d = 0
+      Quadric fundQuadric = Quadric(n.transpose() * n, d * n, d * d);
+      quadric = Quadric(
+        (std::get<0>(quadric) + std::get<0>(fundQuadric)).eval(),
+        (std::get<1>(quadric) + std::get<1>(fundQuadric)).eval(),
+        (std::get<2>(quadric) + std::get<2>(fundQuadric)));
+    }
+    quadrics.emplace_back(quadric);
+  }
 
   // Try to coarsen the quad mesh
   while (aliveFaces > finalNumberOfFaces)
@@ -1163,7 +1207,7 @@ int main(int argc, char* argv[])
   Eigen::MatrixXi F;
 
   // Load a mesh
-  //igl::readOFF(MESHES_DIR + "singlet.off", V, F);
+  //igl::readOFF(MESHES_DIR + "quad_surface.off", V, F);
   igl::readOBJ(MESHES_DIR + "gargoyle.obj", V, F);
 
   std::cout << "Quad mesh coarsening in progress...\n\n";
