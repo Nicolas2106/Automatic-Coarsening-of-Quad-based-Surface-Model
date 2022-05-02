@@ -6,8 +6,14 @@
 #include <igl/opengl/glfw/Viewer.h>
 #include <igl/per_face_normals.h>
 #include <igl/doublearea.h>
+#include <igl/gaussian_curvature.h>
+#include <igl/massmatrix.h>
+#include <igl/invert_diag.h>
 #include <queue>
 #include "tutorial_shared_path.h"
+
+Eigen::VectorXd curvatures; // TODO move
+std::set<int> importantVerts; //TODO move
 
 struct Segment
 {
@@ -104,6 +110,54 @@ void per_vertices_normals(Eigen::MatrixXd& V, Eigen::MatrixXi& F, Eigen::MatrixX
   N.rowwise().normalize();
 }
 
+void quad_corners(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
+  Eigen::VectorXi& I, Eigen::VectorXi& C)
+{
+  I.resize(F.size());
+  int c = 0, rowsF = F.rows();
+  C.resize(rowsF + 1);
+  C(0) = 0;
+
+  Eigen::MatrixXd v;
+  Eigen::MatrixXi f;
+  v.conservativeResize(4, 3);
+  f.conservativeResize(4, 3);
+
+  std::vector<int> verts;
+  for (int p = 0; p < rowsF; ++p)
+  {
+    // Check if the quad (2 triangle) is convex or concave and choose
+    // the best two triangles (representing the quad) according to that
+    Eigen::VectorXd a;
+    Eigen::RowVector4i face = F.row(p);
+    for (int i = 0; i < 4; ++i)
+    {
+      v.row(i) = V.row(face[i]);
+    }
+    f.row(0) << 0, 1, 3;
+    f.row(1) << 1, 2, 3;
+    f.row(2) << 0, 1, 2;
+    f.row(3) << 0, 2, 3;
+    igl::doublearea(v, f, a);
+
+    if (a[2] + a[3] < a[0] + a[1])
+    {
+      verts = { face[0], face[1], face[2], face[3] };
+    }
+    else
+    {
+      verts = { face[1], face[2], face[3], face[0] };
+    }
+
+    for (int i = 0; i < 4; ++i)
+    {
+      I(c++) = verts[i];
+    }
+    C(p + 1) = C(p) + 4;
+  }
+  I.conservativeResize(c);
+}
+
 void new_vertex_pos2(Eigen::MatrixXd& V, Eigen::MatrixXd& normals, std::vector<bool>& tombStonesV,
   std::set<int>& borderVerts, Eigen::MatrixXi& F, std::vector<bool>& tombStonesF, 
   std::vector<std::set<int>>& adt, const int oldVert,
@@ -116,8 +170,11 @@ void new_vertex_pos2(Eigen::MatrixXd& V, Eigen::MatrixXd& normals, std::vector<b
   {
     return; // Vertex belongs to the mesh border. Avoid repositioning TODO sure?
   }
+
+  if (importantVerts.count(oldVert)) { return; }
   
-  Eigen::RowVector3d centroid{ 0.0, 0.0, 0.0 }, rawOldVert = V.row(oldVert);
+  std::vector<Eigen::RowVector3d> centroids;
+  Eigen::RowVector3d rawOldVert = V.row(oldVert);
   int size = 0;
   Eigen::RowVector4i f;
   std::vector<Eigen::RowVector4i> adjacentFaces;
@@ -131,12 +188,10 @@ void new_vertex_pos2(Eigen::MatrixXd& V, Eigen::MatrixXd& normals, std::vector<b
       {
         if (f[i] == oldVert)
         {
-          int nextVert = f[(i + 1) % 4], oppositeVert = f[(i + 2) % 4];
-          
-          centroid += V.row(nextVert);
-          centroid += V.row(oppositeVert);
-          size += 2;
+          centroids.emplace_back((V.row(f[0]) + V.row(f[1]) +
+            V.row(f[2]) + V.row(f[3])) / 4.0);
 
+          int nextVert = f[(i + 1) % 4], oppositeVert = f[(i + 2) % 4];
           removeSegment(oldVert, nextVert, false, V, delOperations);
           removeSegment(oldVert, oppositeVert, true, V, delOperations);
 
@@ -145,7 +200,6 @@ void new_vertex_pos2(Eigen::MatrixXd& V, Eigen::MatrixXd& normals, std::vector<b
       }
     }
   }
-  centroid /= size;
 
   /*Eigen::MatrixXi faces(adjacentFaces.size(), 4);
   for (int i = 0; i < adjacentFaces.size(); ++i)
@@ -156,7 +210,7 @@ void new_vertex_pos2(Eigen::MatrixXd& V, Eigen::MatrixXd& normals, std::vector<b
   Eigen::MatrixXd N;
   per_quad_faces_normals(V, faces, N);
 
-  Eigen::RowVector3d normal = { 0.0,  0.0, 0.0 };
+  Eigen::RowVector3d normal = { 0., 0., 0. };
   for (int i = 0; i < N.rows(); ++i)
   {
     normal += N.row(i);
@@ -164,9 +218,16 @@ void new_vertex_pos2(Eigen::MatrixXd& V, Eigen::MatrixXd& normals, std::vector<b
   normal /= N.rows();
   normal.normalize();*/
 
+  Eigen::RowVector3d rawNewVert1 = { 0., 0., 0. };
+  for (const Eigen::RowVector3d& centroid : centroids)
+  {
+    rawNewVert1 += centroid;
+  }
+  rawNewVert1 /= centroids.size();
+
   Eigen::RowVector3d normal = normals.row(oldVert);
-  double proj = (centroid - rawOldVert).dot(normal);
-  Eigen::RowVector3d rawNewVert = centroid - (proj * normal);
+  double proj = (rawNewVert1 - rawOldVert).dot(normal);
+  Eigen::RowVector3d rawNewVert = rawNewVert1 - (proj * normal);
   V.row(oldVert) = rawNewVert;
 
   // Update the priority queue of potential operations according the new configuration
@@ -189,64 +250,62 @@ void new_vertex_pos2(Eigen::MatrixXd& V, Eigen::MatrixXd& normals, std::vector<b
 
 void new_vertex_pos(Eigen::MatrixXd& V, Eigen::MatrixXd& normals, std::set<int>& borderVerts, Eigen::MatrixXi& F,
   std::vector<bool>& tombStonesF, std::vector<std::set<int>>& adt,
-  const int oldVert, const Eigen::RowVector4i& baseFace, Eigen::RowVector3d vertOnFace,
+  int vM, int vR, const Eigen::RowVector4i& baseFace, Eigen::RowVector3d vertOnFace,
   std::priority_queue<Segment, std::vector<Segment>, CompareTwoSegments>& operations,
   std::priority_queue<Segment, std::vector<Segment>, CompareTwoSegments>& delOperations,
-  bool collapse)
+  std::set<int> vertsOnRing, int forceVert = -1)
 {
   //if (!tombStonesV[oldVert]) { return; } TODO
   
-  if (borderVerts.count(oldVert))
-  {
-    return; // Vertex belongs to the mesh border. Avoid repositioning
-  }
-  
-  Eigen::RowVector3d centroid{ 0.0, 0.0, 0.0 }, rawOldVert = V.row(oldVert);
-  int size = 0;
-  Eigen::RowVector4i f;
-  std::vector<Eigen::RowVector4i> adjacentFaces;
-  for (int face : adt[oldVert])
+  std::set<int> adjacentFaces;
+  for (int face : adt[vM])
   {
     if (tombStonesF[face])
     {
-      f = F.row(face);
-      adjacentFaces.emplace_back(f);
-      for (int i = 0; i < 4; ++i)
-      {
-        if (f[i] == oldVert)
-        {
-          int nextVert = f[(i + 1) % 4], oppositeVert = f[(i + 2) % 4];
-          Eigen::RowVector3d rawNextVert = V.row(nextVert),
-            rawOppVert = V.row(oppositeVert);
-
-          centroid += rawNextVert;
-          centroid += rawOppVert;
-          size += 2;
-
-          if (!collapse)
-          {
-            removeSegment(oldVert, nextVert, false, V, delOperations);
-            removeSegment(oldVert, oppositeVert, true, V, delOperations);
-          }
-
-          break;
-        }
-      }
+      adjacentFaces.emplace(face);
     }
   }
-  centroid /= size;
+  for (int face : adt[vR])
+  {
+    if (tombStonesF[face])
+    {
+      adjacentFaces.emplace(face);
+    }
+  }
 
-  Eigen::Matrix<double, 4, 3> pointCloud;
-  pointCloud << V.row(baseFace[0]), V.row(baseFace[1]),
-    V.row(baseFace[2]), V.row(baseFace[3]);
-  Eigen::RowVector3d normal, pointOnPlane;
-  igl::fit_plane(pointCloud, normal, pointOnPlane);
+  Eigen::RowVector4i f;
+  Eigen::RowVector3d centroid = { 0., 0., 0. };
+  for (int adjFace : adjacentFaces)
+  {
+    f = F.row(adjFace);
+    centroid += (V.row(f[0]) + V.row(f[1]) + V.row(f[2]) + V.row(f[3])) / 4.0;
+  }
+  centroid /= adjacentFaces.size();
+
+  Eigen::RowVector3d normal = { 0., 0., 0. };
+  for (int vRing : vertsOnRing)
+  {
+    normal += normals.row(vRing);
+  }
+  normal /= vertsOnRing.size();
+  normal.normalize();
 
   double proj = (centroid - vertOnFace).dot(normal);
   Eigen::RowVector3d rawNewVert = centroid - (proj * normal);
-  V.row(oldVert) = rawNewVert;
-  
-  Eigen::MatrixXd N;
+
+  if (forceVert == -1)
+  {
+    V.row(vM) = rawNewVert;
+    normals.row(vM) = normal;
+  }
+  else
+  {
+    V.row(vM) =  0.1 * V.row(forceVert) + 0.9 * rawNewVert;
+    normals.row(vM) = normal;
+    importantVerts.emplace(vM);
+  }
+
+  /*Eigen::MatrixXd N;
   Eigen::MatrixXi faces(adjacentFaces.size(), 4);
   for (int i = 0; i < adjacentFaces.size(); ++i)
   {
@@ -260,23 +319,31 @@ void new_vertex_pos(Eigen::MatrixXd& V, Eigen::MatrixXd& normals, std::set<int>&
     n += N.row(i);
   }
   n /= N.rows();
-  n.normalize();
-  normals.row(oldVert) = n;
+  n.normalize();*/
+  
+
+  /*Eigen::MatrixXi fc;
+  Eigen::VectorXi I, C, J;
+  quad_corners(V, F, I, C);
+  igl::polygons_to_triangles(I, C, fc, J);
+
+
+  igl::gaussian_curvature(V, fc, curvatures);*/
 
   // Update the priority queue of potential operations according the new configuration
-  for (int face : adt[oldVert])
+  for (int face : adt[vM])
   {
     if (tombStonesF[face])
     {
       f = F.row(face);
       for (int i = 0; i < 4; ++i)
       {
-        if (f[i] == oldVert)
+        if (f[i] == vM)
         {
           int nextVert = f[(i + 1) % 4], oppositeVert = f[(i + 2) % 4];
 
-          insertSegment(oldVert, nextVert, false, V, operations);
-          insertSegment(oldVert, oppositeVert, true, V, operations);
+          insertSegment(vM, nextVert, false, V, operations);
+          insertSegment(vM, oppositeVert, true, V, operations);
 
           break;
         }
@@ -309,14 +376,15 @@ void remove_doublet(int vertexToBeRemoved, Eigen::MatrixXd& V, Eigen::MatrixXd& 
   std::vector<bool>& tombStonesV, std::set<int>& borderVerts, Eigen::MatrixXi& F,
   std::vector<bool>& tombStonesF, int& aliveFaces, std::vector<std::set<int>>& adt,
   std::priority_queue<Segment, std::vector<Segment>, CompareTwoSegments>& operations,
-  std::priority_queue<Segment, std::vector<Segment>, CompareTwoSegments>& delOperations,
-  bool force = false)
+  std::priority_queue<Segment, std::vector<Segment>, CompareTwoSegments>& delOperations)
 {
   if (aliveFaces < 2) { return; } // Too few faces to remove doublets
   if (!tombStonesV[vertexToBeRemoved]) { return; } // This vert has already been removed
   
+  Eigen::RowVector3d origD = V.row(vertexToBeRemoved);
+
   // Avoid removal if the vertex belongs to the mesh border
-  if (borderVerts.count(vertexToBeRemoved) && !force)
+  if (borderVerts.count(vertexToBeRemoved))
   {
     return; // Doublet removal avoided
   }
@@ -400,6 +468,92 @@ void remove_doublet(int vertexToBeRemoved, Eigen::MatrixXd& V, Eigen::MatrixXd& 
   // Remove the vertex at the center of the doublet
   tombStonesV[vertexToBeRemoved] = false;
 
+  //TODO
+  if (importantVerts.count(vertexToBeRemoved))
+  {
+    for (int face : adt[v])
+    {
+      if (tombStonesF[face])
+      {
+        Eigen::RowVector4i f = F.row(face);
+        for (int i = 0; i < 4; ++i)
+        {
+          if (f[i] == v)
+          {
+            int nextVert = f[(i + 1) % 4], oppositeVert = f[(i + 2) % 4];
+            removeSegment(v, nextVert, false, V, delOperations);
+            removeSegment(v, oppositeVert, true, V, delOperations);
+
+            break;
+          }
+        }
+      }
+    }
+
+    V.row(v) = 0.9 * origD + 0.1 * V.row(v);
+    importantVerts.emplace(v);
+
+    for (int face : adt[v])
+    {
+      if (tombStonesF[face])
+      {
+        Eigen::RowVector4i f = F.row(face);
+        for (int i = 0; i < 4; ++i)
+        {
+          if (f[i] == v)
+          {
+            int nextVert = f[(i + 1) % 4], oppositeVert = f[(i + 2) % 4];
+            insertSegment(v, nextVert, false, V, operations);
+            insertSegment(v, oppositeVert, true, V, operations);
+
+            break;
+          }
+        }
+      }
+    }
+
+    for (int face : adt[oppositeVert])
+    {
+      if (tombStonesF[face])
+      {
+        Eigen::RowVector4i f = F.row(face);
+        for (int i = 0; i < 4; ++i)
+        {
+          if (f[i] == oppositeVert)
+          {
+            int nextVert = f[(i + 1) % 4], oppositeVer = f[(i + 2) % 4];
+            removeSegment(oppositeVert, nextVert, false, V, delOperations);
+            removeSegment(oppositeVert, oppositeVer, true, V, delOperations);
+
+            break;
+          }
+        }
+      }
+    }
+
+    V.row(oppositeVert) = 0.9 * origD + 0.1 * V.row(oppositeVert);
+    importantVerts.emplace(oppositeVert);
+
+    for (int face : adt[oppositeVert])
+    {
+      if (tombStonesF[face])
+      {
+        Eigen::RowVector4i f = F.row(face);
+        for (int i = 0; i < 4; ++i)
+        {
+          if (f[i] == oppositeVert)
+          {
+            int nextVert = f[(i + 1) % 4], oppositeVer = f[(i + 2) % 4];
+            insertSegment(oppositeVert, nextVert, false, V, operations);
+            insertSegment(oppositeVert, oppositeVer, true, V, operations);
+
+            break;
+          }
+        }
+      }
+    }
+  }
+
   // Check if a singlet has been created
   if (v == oppositeVert)
   {
@@ -416,6 +570,7 @@ void remove_doublet(int vertexToBeRemoved, Eigen::MatrixXd& V, Eigen::MatrixXd& 
       if (valence == 1)
       {
         singletIndex = i; // Singlet vertex has valence equal to 1
+        break;
       }
 
     }
@@ -943,7 +1098,7 @@ bool diagonal_collapse(const Segment& diag, Eigen::MatrixXd& V, Eigen::MatrixXd&
   const bool isOnBorder = borderVerts.count(vertexToBeMaintained) && 
     borderVerts.count(vertexToBeRemoved);
   
-  const bool isHalfOnBorder = isOnBorder ? false :
+  bool isHalfOnBorder = isOnBorder ? false :
     borderVerts.count(vertexToBeMaintained) || borderVerts.count(vertexToBeRemoved);
 
   if (isHalfOnBorder)
@@ -959,6 +1114,8 @@ bool diagonal_collapse(const Segment& diag, Eigen::MatrixXd& V, Eigen::MatrixXd&
 
   Eigen::RowVector3d rawVertToBeMaintained = V.row(vertexToBeMaintained);
   Eigen::RowVector3d rawVertToBeRemoved = V.row(vertexToBeRemoved);
+
+  Eigen::RowVector3d origM = rawVertToBeMaintained, origR = rawVertToBeRemoved;
   
   Eigen::RowVector4i f;
   if (!isOnBorder && !isHalfOnBorder)
@@ -1243,6 +1400,7 @@ bool diagonal_collapse(const Segment& diag, Eigen::MatrixXd& V, Eigen::MatrixXd&
     }
   }
 
+  std::set<int> vertsOnRing;
   if (!isHalfOnBorder)
   {
     // Modify the faces and remove the edges/diagonals involved in the collapse
@@ -1256,6 +1414,9 @@ bool diagonal_collapse(const Segment& diag, Eigen::MatrixXd& V, Eigen::MatrixXd&
           if (f[i] == vertexToBeMaintained)
           {
             int nextVert = f[(i + 1) % 4], oppositeVert = f[(i + 2) % 4];
+
+            vertsOnRing.emplace(nextVert);
+            vertsOnRing.emplace(oppositeVert);
 
             removeSegment(vertexToBeMaintained, oppositeVert, true, V, delOperations);
 
@@ -1305,6 +1466,9 @@ bool diagonal_collapse(const Segment& diag, Eigen::MatrixXd& V, Eigen::MatrixXd&
         {
           int nextVert = f[(i + 1) % 4], oppositeVert = f[(i + 2) % 4];
           Eigen::RowVector3d rawNextVert = V.row(nextVert);
+
+          vertsOnRing.emplace(nextVert);
+          vertsOnRing.emplace(oppositeVert);
 
           if (isOnBorder)
           {
@@ -1412,10 +1576,26 @@ bool diagonal_collapse(const Segment& diag, Eigen::MatrixXd& V, Eigen::MatrixXd&
   }
   else if (!isHalfOnBorder)
   {
-    // Calculate and set the new vertex's position
     Eigen::RowVector3d midpoint = 0.5 * rawVertToBeMaintained + 0.5 * rawVertToBeRemoved;
-    new_vertex_pos(V, normals, borderVerts, F, tombStonesF, adt, vertexToBeMaintained, 
-      F.row(faceToBeCollapsed), midpoint, operations, delOperations, true);
+    if ((importantVerts.count(vertexToBeMaintained) && !importantVerts.count(vertexToBeRemoved)) ||
+      (!importantVerts.count(vertexToBeMaintained) && importantVerts.count(vertexToBeRemoved)))
+    {
+      if (curvatures.row(vertexToBeMaintained)[0] > curvatures.row(vertexToBeRemoved)[0])
+      {
+        new_vertex_pos(V, normals, borderVerts, F, tombStonesF, adt, vertexToBeMaintained, vertexToBeRemoved,
+          F.row(faceToBeCollapsed), midpoint, operations, delOperations, vertsOnRing, vertexToBeMaintained);
+      }
+      else
+      {
+        new_vertex_pos(V, normals, borderVerts, F, tombStonesF, adt, vertexToBeMaintained, vertexToBeRemoved,
+          F.row(faceToBeCollapsed), midpoint, operations, delOperations, vertsOnRing, vertexToBeRemoved);
+      }
+    }
+    else
+    {
+      new_vertex_pos(V, normals, borderVerts, F, tombStonesF, adt, vertexToBeMaintained, vertexToBeRemoved,
+        F.row(faceToBeCollapsed), midpoint, operations, delOperations, vertsOnRing);
+    }
   }
 
   for (int face : adt[vertexToBeMaintained])
@@ -1582,7 +1762,7 @@ bool coarsen_quad_mesh(Eigen::MatrixXd& V, Eigen::MatrixXd& normals, std::vector
     }
   }
 
-  // Final local optimization
+  // Final local optimization TODO
   int survivedVertex = nextOperation.v1;
   if (tombStonesV[survivedVertex])
   {
@@ -1613,6 +1793,7 @@ bool coarsen_quad_mesh(Eigen::MatrixXd& V, Eigen::MatrixXd& normals, std::vector
 
   return true;
 }
+
 
 bool start_simplification(Eigen::MatrixXd& V, Eigen::MatrixXi& F, int finalNumberOfFaces)
 {
@@ -1728,11 +1909,37 @@ bool start_simplification(Eigen::MatrixXd& V, Eigen::MatrixXi& F, int finalNumbe
 
   // A priority queue containing the deleted operations to be ignored
   std::priority_queue<Segment, std::vector<Segment>, CompareTwoSegments> delOperations;
+  
+  Eigen::MatrixXi f;
+  Eigen::VectorXi I, C, J;
+  quad_corners(V, F, I, C);
+  igl::polygons_to_triangles(I, C, f, J);
+
+  igl::gaussian_curvature(V, f, curvatures);
+  //std::cout << "\n\n" << K << "\n\n";
+
+  // Compute mass matrix
+  Eigen::SparseMatrix<double> M, Minv;
+  igl::massmatrix(V, f, igl::MASSMATRIX_TYPE_DEFAULT, M);
+  igl::invert_diag(M, Minv);
+  // Divide by area to get integral average
+  curvatures = (Minv * curvatures).eval();
+
+  //std::set<int> importantVerts;
+  for (int i = 0; i < curvatures.rows(); ++i)
+  {
+    double val = std::abs(curvatures.row(i)[0]);
+
+    if (val > 0.45)
+    {
+      importantVerts.emplace(i);
+    }
+  }
 
   // Try to coarsen the quad mesh
   while (aliveFaces > finalNumberOfFaces)
   {
-    if (aliveFaces == 30573)
+    /*if (aliveFaces == 4374)
     {
       if (!coarsen_quad_mesh(V, normals, tombStonesV, borderVertices, F, tombStonesF,
         aliveFaces, adt, operations, delOperations))
@@ -1741,7 +1948,7 @@ bool start_simplification(Eigen::MatrixXd& V, Eigen::MatrixXi& F, int finalNumbe
       }
       std::cout << aliveFaces << "\n"; // TODO delete
       continue;
-    }
+    }*/
     
     if (!coarsen_quad_mesh(V, normals, tombStonesV, borderVertices, F, tombStonesF,
       aliveFaces, adt, operations, delOperations))
@@ -1750,6 +1957,14 @@ bool start_simplification(Eigen::MatrixXd& V, Eigen::MatrixXi& F, int finalNumbe
     }
     std::cout << aliveFaces << "\n"; // TODO delete
   }
+
+  /*diagonal_collapse(Segment{ 20, 15, squared_distance(V.row(20), V.row(15)), true },
+    V, normals, tombStonesV, borderVertices, F, tombStonesF, aliveFaces, adt,
+    operations, delOperations);
+
+  diagonal_collapse(Segment{ 25, 20, squared_distance(V.row(25), V.row(20)), true },
+    V, normals, tombStonesV, borderVertices, F, tombStonesF, aliveFaces, adt,
+    operations, delOperations);*/
 
   // Set the deleted faces invisible // TODO delete?
   for (int i = 0; i < tombStonesF.size(); ++i)
@@ -1778,54 +1993,6 @@ bool start_simplification(Eigen::MatrixXd& V, Eigen::MatrixXi& F, int finalNumbe
   } TODO */
 
   return true;
-}
-
-void quad_corners(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
-  Eigen::VectorXi& I, Eigen::VectorXi& C)
-{
-  I.resize(F.size());
-  int c = 0, rowsF = F.rows();
-  C.resize(rowsF + 1);
-  C(0) = 0;
-
-  Eigen::MatrixXd v;
-  Eigen::MatrixXi f;
-  v.conservativeResize(4, 3);
-  f.conservativeResize(4, 3);
-
-  std::vector<int> verts;
-  for (int p = 0; p < rowsF; ++p)
-  {
-    // Check if the quad (2 triangle) is convex or concave and choose
-    // the best two triangles (representing the quad) according to that
-    Eigen::VectorXd a;
-    Eigen::RowVector4i face = F.row(p);
-    for (int i = 0; i < 4; ++i)
-    {
-      v.row(i) = V.row(face[i]);
-    }
-    f.row(0) << 0, 1, 3;
-    f.row(1) << 1, 2, 3;
-    f.row(2) << 0, 1, 2;
-    f.row(3) << 0, 2, 3;
-    igl::doublearea(v, f, a);
-
-    if (a[2] + a[3] < a[0] + a[1])
-    {
-      verts = { face[0], face[1], face[2], face[3] };
-    }
-    else
-    {
-      verts = { face[1], face[2], face[3], face[0] };
-    }
-
-    for (int i = 0; i < 4; ++i)
-    {
-      I(c++) = verts[i];
-    }
-    C(p + 1) = C(p) + 4;
-  }
-  I.conservativeResize(c);
 }
 
 void draw_quad_mesh(Eigen::MatrixXd& V, Eigen::MatrixXi& F)
@@ -1868,6 +2035,12 @@ void draw_quad_mesh(Eigen::MatrixXd& V, Eigen::MatrixXi& F)
   viewer.data().set_edges(V, E, black);
   viewer.data().show_lines = false;
 
+  for (int p : importantVerts)
+  {
+    viewer.data().add_points(V.row(p), Eigen::RowVector3d(1, 0, 0));
+    viewer.data().point_size = 8.;
+  }
+
   viewer.launch();
 }
 
@@ -1882,7 +2055,7 @@ int main(int argc, char* argv[])
   Eigen::MatrixXi F;
 
   // Load a mesh
-  //igl::readOFF(MESHES_DIR + "edge_rotate_surface.off", V, F);
+  //igl::readOFF(MESHES_DIR + "big_surface.off", V, F);
   igl::readOBJ(MESHES_DIR + "armadillo.obj", V, F);
 
   std::cout << "Quad mesh coarsening in progress...\n\n";
@@ -1922,4 +2095,25 @@ int main(int argc, char* argv[])
     std::cout << "\n\n" << "ERROR occurred during the quad mesh simplification\n\n";
   }
 
+  /*Eigen::MatrixXi f;
+  Eigen::VectorXi I, C, J;
+  quad_corners(V, F, I, C);
+  igl::polygons_to_triangles(I, C, f, J);
+
+  Eigen::VectorXd K;
+  igl::gaussian_curvature(V, f, K);
+  //std::cout << "\n\n" << K << "\n\n";
+
+  // Compute mass matrix
+  //Eigen::SparseMatrix<double> M, Minv;
+  //igl::massmatrix(V, f, igl::MASSMATRIX_TYPE_DEFAULT, M);
+  //igl::invert_diag(M, Minv);
+  // Divide by area to get integral average
+  //K = (Minv * K).eval();
+
+  // Plot the mesh with pseudocolors
+  igl::opengl::glfw::Viewer viewer;
+  viewer.data().set_mesh(V, f);
+  viewer.data().set_data(K);
+  viewer.launch();*/
 }
