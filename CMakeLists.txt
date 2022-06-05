@@ -19,9 +19,8 @@ else()
 	set(LIBIGL_TOPLEVEL_PROJECT OFF)
 endif()
 
-# Build tests and tutorials
-option(LIBIGL_BUILD_TESTS      "Build libigl unit test"        ${LIBIGL_TOPLEVEL_PROJECT})
-option(LIBIGL_BUILD_TUTORIALS  "Build libigl tutorial"         ${LIBIGL_TOPLEVEL_PROJECT})
+# Build application
+option(LIBIGL_BUILD_APP  "Build libigl app"         ${LIBIGL_TOPLEVEL_PROJECT})
 option(LIBIGL_EXPORT_TARGETS   "Export libigl CMake targets"   ${LIBIGL_TOPLEVEL_PROJECT})
 
 # USE_STATIC_LIBRARY speeds up the generation of multiple binaries,
@@ -58,14 +57,8 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/cmake)
 ### Adding libIGL: choose the path to your local copy libIGL
 include(libigl)
 
-if(LIBIGL_BUILD_TUTORIALS)
-	add_subdirectory(tutorial)
-endif()
-
-if(LIBIGL_BUILD_TESTS)
-	include(CTest)
-	enable_testing()
-	add_subdirectory(tests)
+if(LIBIGL_BUILD_APP)
+	add_subdirectory(application)
 endif()
 
 if(LIBIGL_TOPLEVEL_PROJECT)

@@ -22,14 +22,7 @@ option(LIBIGL_SKIP_DOWNLOAD "Skip downloading external libraries" OFF)
 # Shortcut functions
 function(igl_download_project_aux name source)
 	if(NOT LIBIGL_SKIP_DOWNLOAD)
-		download_project(
-			PROJ         ${name}
-			SOURCE_DIR   "${source}"
-			DOWNLOAD_DIR "${LIBIGL_EXTERNAL}/.cache/${name}"
-			QUIET
-			${LIBIGL_EXTRA_OPTIONS}
-			${ARGN}
-		)
+		
 	endif()
 endfunction()
 
@@ -190,9 +183,5 @@ endfunction()
 
 ## Tutorial data
 function(igl_download_tutorial_data)
-	igl_download_project_aux(tutorial_data
-		"${LIBIGL_EXTERNAL}/../tutorial/data"
-		GIT_REPOSITORY https://github.com/libigl/libigl-tutorial-data
-		GIT_TAG        c1f9ede366d02e3531ecbaec5e3769312f31cccd
-	)
+	
 endfunction()
