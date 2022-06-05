@@ -29,3 +29,8 @@ Compile this project using the standard cmake routine:
     make
 
 This should find and build the dependencies.
+
+## Run
+
+From within the `build` directory just find the file `libigl.sln` and open it with Visual Studio.
+
