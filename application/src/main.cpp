@@ -153,7 +153,7 @@ void quad_corners(Eigen::MatrixXd& V, Eigen::MatrixXi& F,
   I.conservativeResize(c);
 }
 
-void new_vertex_pos2(Eigen::MatrixXd& V, Eigen::MatrixXd& normals, std::vector<bool>& tombStonesV,
+void new_vertex_pos(Eigen::MatrixXd& V, Eigen::MatrixXd& normals, std::vector<bool>& tombStonesV,
   std::set<int>& borderVerts, Eigen::MatrixXi& F, std::vector<bool>& tombStonesF, 
   std::vector<std::set<int>>& adt, const int oldVert,
   std::priority_queue<Segment, std::vector<Segment>, CompareTwoSegments>& operations,
@@ -219,7 +219,7 @@ void new_vertex_pos2(Eigen::MatrixXd& V, Eigen::MatrixXd& normals, std::vector<b
   }
 }
 
-void new_vertex_pos(Eigen::MatrixXd& V, Eigen::MatrixXd& normals, std::set<int>& borderVerts, Eigen::MatrixXi& F,
+void new_collapse_pos(Eigen::MatrixXd& V, Eigen::MatrixXd& normals, std::set<int>& borderVerts, Eigen::MatrixXi& F,
   std::vector<bool>& tombStonesF, std::vector<std::set<int>>& adt,
   int vM, int vR, const Eigen::RowVector4i& baseFace, Eigen::RowVector3d vertOnFace,
   std::priority_queue<Segment, std::vector<Segment>, CompareTwoSegments>& operations,
@@ -538,13 +538,13 @@ void remove_doublet(int vertexToBeRemoved, Eigen::MatrixXd& V, Eigen::MatrixXd& 
   else
   {
     // Compute and set the new positions of vertices adjacent to the doublet
-    new_vertex_pos2(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, v,
+    new_vertex_pos(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, v,
       operations, delOperations, curvatures);
-    new_vertex_pos2(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, oppositeVert,
+    new_vertex_pos(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, oppositeVert,
       operations, delOperations, curvatures);
-    new_vertex_pos2(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, endVert1,
+    new_vertex_pos(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, endVert1,
       operations, delOperations, curvatures);
-    new_vertex_pos2(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, endVert2,
+    new_vertex_pos(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, endVert2,
       operations, delOperations, curvatures);
   }
 
@@ -743,10 +743,10 @@ bool try_vertex_rotation(int rotationVert, Eigen::MatrixXd& V, Eigen::MatrixXd& 
             if (f[i] == rotationVert)
             {
               // Next vertex
-              new_vertex_pos2(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, f[(i + 1) % 4],
+              new_vertex_pos(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, f[(i + 1) % 4],
                 operations, delOperations, curvatures);
               // Opposite vertex
-              new_vertex_pos2(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, f[(i + 2) % 4],
+              new_vertex_pos(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, f[(i + 2) % 4],
                 operations, delOperations, curvatures);
             }
           }
@@ -986,17 +986,17 @@ bool try_edge_rotation(int vert1, int vert2, Eigen::MatrixXd& V, Eigen::MatrixXd
     }
 
     // Compute and set the new positions of vertices adjacent to the edge rotated
-    new_vertex_pos2(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, edgeFirst,
+    new_vertex_pos(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, edgeFirst,
       operations, delOperations, curvatures);
-    new_vertex_pos2(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, edgeSecond,
+    new_vertex_pos(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, edgeSecond,
       operations, delOperations, curvatures);
-    new_vertex_pos2(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, oppositeVertF1,
+    new_vertex_pos(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, oppositeVertF1,
       operations, delOperations, curvatures);
-    new_vertex_pos2(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, oppositeVertF2,
+    new_vertex_pos(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, oppositeVertF2,
       operations, delOperations, curvatures);
-    new_vertex_pos2(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, oppositeNextVertF1,
+    new_vertex_pos(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, oppositeNextVertF1,
       operations, delOperations, curvatures);
-    new_vertex_pos2(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, oppositeNextVertF2,
+    new_vertex_pos(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, oppositeNextVertF2,
       operations, delOperations, curvatures);
   }
 
@@ -1315,7 +1315,7 @@ bool diagonal_collapse(const Segment& diag, Eigen::MatrixXd& V, Eigen::MatrixXd&
       insertSegment(vertexToBeMaintained, oppV, false, V, operations);
       insertSegment(vertexToBeRemoved, oppV, false, V, operations);
 
-      new_vertex_pos2(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, oppV,
+      new_vertex_pos(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, oppV,
         operations, delOperations, curvatures);
 
       return true;
@@ -1509,12 +1509,12 @@ bool diagonal_collapse(const Segment& diag, Eigen::MatrixXd& V, Eigen::MatrixXd&
     {
       Eigen::RowVector3d midpoint = 0.5 * rawVertToBeMaintained + 0.5 * rawVertToBeRemoved;
       
-      new_vertex_pos(V, normals, borderVerts, F, tombStonesF, adt, vertexToBeMaintained, vertexToBeRemoved,
+      new_collapse_pos(V, normals, borderVerts, F, tombStonesF, adt, vertexToBeMaintained, vertexToBeRemoved,
         F.row(faceToBeCollapsed), midpoint, operations, delOperations, vertsOnRing);
     }
     else
     {
-      new_vertex_pos(V, normals, borderVerts, F, tombStonesF, adt, vertexToBeMaintained, vertexToBeRemoved,
+      new_collapse_pos(V, normals, borderVerts, F, tombStonesF, adt, vertexToBeMaintained, vertexToBeRemoved,
         F.row(faceToBeCollapsed), rawVertToBeMaintained, operations, delOperations, vertsOnRing);
     }
   }
@@ -1532,9 +1532,9 @@ bool diagonal_collapse(const Segment& diag, Eigen::MatrixXd& V, Eigen::MatrixXd&
 
           if (!isOnBorder)
           {
-            new_vertex_pos2(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, nextVert,
+            new_vertex_pos(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, nextVert,
               operations, delOperations, curvatures);
-            new_vertex_pos2(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, oppositeVert,
+            new_vertex_pos(V, normals, tombStonesV, borderVerts, F, tombStonesF, adt, oppositeVert,
               operations, delOperations, curvatures);
           }
 
