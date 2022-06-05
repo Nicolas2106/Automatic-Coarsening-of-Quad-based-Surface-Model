@@ -1,11 +1,31 @@
-# libigl - A simple C++ geometry processing library
-[![](https://github.com/libigl/libigl/workflows/Build/badge.svg?event=push)](https://github.com/libigl/libigl/actions?query=workflow%3ABuild+branch%3Amain+event%3Apush)
-[![](https://github.com/libigl/libigl/workflows/Nightly/badge.svg)](https://github.com/libigl/libigl/actions?query=workflow%3ANightly+branch%3Amain+event%3Aschedule)
-[![](https://anaconda.org/conda-forge/igl/badges/installer/conda.svg)](https://anaconda.org/conda-forge/igl)
+# Automatic Coarsening of Quad-based Surface Model
 
-![](https://libigl.github.io/libigl-teaser.png)
+A university project for a Master's degree thesis in Computer Science at the University of Milan.
 
-Documentation, tutorial, and instructions at <https://libigl.github.io>.
+## Dependencies
 
+The only dependencies are STL, Eigen, [libigl](http://libigl.github.io/libigl/) and the dependencies
+of the `igl::opengl::glfw::Viewer` (OpenGL, glad and GLFW).
+The CMake build system will automatically download libigl and its dependencies using
+[CMake FetchContent](https://cmake.org/cmake/help/latest/module/FetchContent.html),
+thus requiring no setup on your part.
 
-💡 **Note**: [v2.3.0](https://github.com/libigl/libigl/releases/tag/v2.3.0) is our last stable release before some planned major reorganization (see #1696 for details). The upcoming reorganization is aimed at facilitating maintenance and packaging of various libigl components. The next release will be a new major version of libigl (3.0.0). Be mindful if you are updating to the latest commit on the `main` branch of libigl.
+To use a local copy of libigl rather than downloading the repository via FetchContent, you can use
+the CMake cache variable `FETCHCONTENT_SOURCE_DIR_LIBIGL` when configuring your CMake project for
+the first time:
+```
+cmake -DFETCHCONTENT_SOURCE_DIR_LIBIGL=<path-to-libigl> ..
+```
+When changing this value, do not forget to clear your `CMakeCache.txt`, or to update the cache variable
+via `cmake-gui` or `ccmake`.
+
+## Compile
+
+Compile this project using the standard cmake routine:
+
+    mkdir build
+    cd build
+    cmake ..
+    make
+
+This should find and build the dependencies.
