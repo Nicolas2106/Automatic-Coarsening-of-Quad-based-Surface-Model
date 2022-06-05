@@ -1,0 +1,44 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\stb\CMakeFiles\e13c2d127ba79d23f7c07105694d506e\stb-download-mkdir.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\stb\CMakeFiles\e13c2d127ba79d23f7c07105694d506e\stb-download-download.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\stb\CMakeFiles\e13c2d127ba79d23f7c07105694d506e\stb-download-update.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\stb\CMakeFiles\e13c2d127ba79d23f7c07105694d506e\stb-download-patch.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\stb\CMakeFiles\e13c2d127ba79d23f7c07105694d506e\stb-download-configure.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\stb\CMakeFiles\e13c2d127ba79d23f7c07105694d506e\stb-download-build.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\stb\CMakeFiles\e13c2d127ba79d23f7c07105694d506e\stb-download-install.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\stb\CMakeFiles\e13c2d127ba79d23f7c07105694d506e\stb-download-test.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\stb\CMakeFiles\7561b9cb945a5cd68082943c3b5ac285\stb-download-complete.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\stb\CMakeFiles\a75e36bd1bd928283714d8e79b094b8a\stb-download.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\stb\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\stb\CMakeFiles\stb-download" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{57AB895E-BD6C-3D15-AA20-D9BF22144D6D}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\stb\CMakeFiles\a75e36bd1bd928283714d8e79b094b8a\generate.stamp.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{57AB895E-BD6C-3D15-AA20-D9BF22144D6D}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

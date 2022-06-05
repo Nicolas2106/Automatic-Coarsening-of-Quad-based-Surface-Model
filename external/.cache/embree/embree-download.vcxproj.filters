@@ -1,0 +1,44 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\embree\CMakeFiles\b63295c04e9dc824c4074152f71904ae\embree-download-mkdir.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\embree\CMakeFiles\b63295c04e9dc824c4074152f71904ae\embree-download-download.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\embree\CMakeFiles\b63295c04e9dc824c4074152f71904ae\embree-download-update.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\embree\CMakeFiles\b63295c04e9dc824c4074152f71904ae\embree-download-patch.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\embree\CMakeFiles\b63295c04e9dc824c4074152f71904ae\embree-download-configure.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\embree\CMakeFiles\b63295c04e9dc824c4074152f71904ae\embree-download-build.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\embree\CMakeFiles\b63295c04e9dc824c4074152f71904ae\embree-download-install.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\embree\CMakeFiles\b63295c04e9dc824c4074152f71904ae\embree-download-test.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\embree\CMakeFiles\0c1284380283a1b043b275413a6d90b3\embree-download-complete.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\embree\CMakeFiles\b93b23caf837c88f0a9ebc91d781012b\embree-download.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\embree\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\embree\CMakeFiles\embree-download" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{047477EF-8E49-315C-A8F1-7F566AA5908C}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

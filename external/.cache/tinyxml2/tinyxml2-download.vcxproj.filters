@@ -1,0 +1,44 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\tinyxml2\CMakeFiles\b01af999e72c5611ce3f4de5a94795af\tinyxml2-download-mkdir.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\tinyxml2\CMakeFiles\b01af999e72c5611ce3f4de5a94795af\tinyxml2-download-download.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\tinyxml2\CMakeFiles\b01af999e72c5611ce3f4de5a94795af\tinyxml2-download-update.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\tinyxml2\CMakeFiles\b01af999e72c5611ce3f4de5a94795af\tinyxml2-download-patch.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\tinyxml2\CMakeFiles\b01af999e72c5611ce3f4de5a94795af\tinyxml2-download-configure.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\tinyxml2\CMakeFiles\b01af999e72c5611ce3f4de5a94795af\tinyxml2-download-build.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\tinyxml2\CMakeFiles\b01af999e72c5611ce3f4de5a94795af\tinyxml2-download-install.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\tinyxml2\CMakeFiles\b01af999e72c5611ce3f4de5a94795af\tinyxml2-download-test.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\tinyxml2\CMakeFiles\d9467b75240f0b602d2f89928659207b\tinyxml2-download-complete.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\tinyxml2\CMakeFiles\97d2ab806ba15aa124e0e760880cada2\tinyxml2-download.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\tinyxml2\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="F:\Users\Nicolas\Desktop\TESI\Quadrilateral extension to libigl\libigl\external\.cache\tinyxml2\CMakeFiles\tinyxml2-download" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{72E210DC-FAF8-37B8-ABC4-DA2A8C701D74}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

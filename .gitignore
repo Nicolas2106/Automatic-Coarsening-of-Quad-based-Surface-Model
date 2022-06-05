@@ -29,7 +29,6 @@
 .idea/
 .vs/
 .vscode/
-/external
 Debug/
 README.html
 Release/
