@@ -34,3 +34,19 @@ This should find and build the dependencies.
 
 From within the `build` directory just find the file `libigl.sln` and open it with Visual Studio.
 
+## Results
+<img src="https://github.com/Nicolas2106/Automatic-Coarsening-of-Quad-based-Surface-Model/blob/main/figures/teddybear.png" width="70%">
+<img src="https://github.com/Nicolas2106/Automatic-Coarsening-of-Quad-based-Surface-Model/blob/main/figures/david.png" width="70%">
+<img src="https://github.com/Nicolas2106/Automatic-Coarsening-of-Quad-based-Surface-Model/blob/main/figures/bimba.png" width="70%">
+<img src="https://github.com/Nicolas2106/Automatic-Coarsening-of-Quad-based-Surface-Model/blob/main/figures/julius.png" width="70%">
+<img src="https://github.com/Nicolas2106/Automatic-Coarsening-of-Quad-based-Surface-Model/blob/main/figures/screw.png" width="65%">
+<img src="https://github.com/Nicolas2106/Automatic-Coarsening-of-Quad-based-Surface-Model/blob/main/figures/molecule.png" width="70%">
+<img src="https://github.com/Nicolas2106/Automatic-Coarsening-of-Quad-based-Surface-Model/blob/main/figures/armadillo.png" width="58%">
+
+### Extreme coarsening
+<img src="https://github.com/Nicolas2106/Automatic-Coarsening-of-Quad-based-Surface-Model/blob/main/figures/david2.png" width="60%">
+<img src="https://github.com/Nicolas2106/Automatic-Coarsening-of-Quad-based-Surface-Model/blob/main/figures/knot.png" width="47%">
+
+### Surface quality improvement
+<img src="https://github.com/Nicolas2106/Automatic-Coarsening-of-Quad-based-Surface-Model/blob/main/figures/teddybear2.png" width="70%">
+<img src="https://github.com/Nicolas2106/Automatic-Coarsening-of-Quad-based-Surface-Model/blob/main/figures/tangle.png" width="70%">
